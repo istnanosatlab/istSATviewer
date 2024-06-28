@@ -36,9 +36,14 @@ eval $gnuradio_command
 sleep 5
 
 
-
 # Launch the satviewer program with the parameters
-satviewer_command="./satExec3_10 --gs-callsign $GS_CALLSIGN --sc-callsign $SC_CALLSIGN --gr-address $GR_ADDRESS --gr-port $GR_PORT --modulation-controller-port $MOD_CTRL_PORT --csv-folder $CSV_FOLDER"
+satviewer_command="./satExec3_10 --gs-callsign $GS_CALLSIGN --sc-callsign $SC_CALLSIGN --gr-address $GR_ADDRESS --gr-port $GR_PORT --modulation-controller-port $MOD_CTRL_PORT --csv-folder $CSV_FOLDER &"
 echo "Launching satviewer command: $satviewer_command"
 eval $satviewer_command
+
+
+# Launch smoothviewer to view the data in the browser
+smoothviewer_command="python3 smoothviewer/app.py"
+echo "Launching smoothviewer"
+eval $smoothviewer_command
 
