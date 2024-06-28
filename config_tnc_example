@@ -1,5 +1,5 @@
 #gnu radio parameters
-gnuradio_script: scripts/GNU_3_9_RTL.py
+gnuradio_script: scripts/tnc_proxy.py
 rx_offset: 0
 gain: 0
 
@@ -11,6 +11,6 @@ gain: 0
 gs-callsign: CS5CEP-1
 sc-callsign: CT6IST-1
 gr-address: localhost
-gr-port: 52001
+gr-port: 6970
 modulation-controller-port: 54000
 csv-folder: logs
