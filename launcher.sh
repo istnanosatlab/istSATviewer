@@ -32,6 +32,9 @@ gnuradio_command="python3 $SCRIPT > /dev/null &"
 echo "Launching gnu radio command: $gnuradio_command"
 eval $gnuradio_command
 
+# wait five seconds
+sleep 5
+
 
 
 # Launch the satviewer program with the parameters
