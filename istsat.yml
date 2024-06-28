@@ -1,0 +1,5747 @@
+_shared: # yaml shared stuff
+  ifw:
+    data: &_ifw_data
+      ifw_state:       { "type": "U8",  "enum": "INCPFWState", "doc": "The state of the INCP firewall (locked or unlocked)",                     }
+      ifw_checked:     { "type": "U16", "enum": Null,          "doc": "Number of messages checked against fw rules",                             }
+      ifw_failed:      { "type": "U16", "enum": Null,          "doc": "Number of messages checked and determied that should be dropped/blocked", }
+      ifw_autolock_in: { "type": "U16", "enum": Null,          "doc": "Seconds until IFW autolocks itself",                                      }
+      ifw_keys:        { "type": "U8",  "enum": Null,          "doc": "Bitfield with active keys. Bit0 corresponds to the key in slot0. Except bit4 which is the secret", }
+
+    reports: &_ifw_reports
+      ifw:
+        members:
+          - ifw_state
+          - ifw_checked
+          - ifw_failed
+          - ifw_autolock_in
+          - ifw_keys
+
+    cmds: &_ifw_cmds
+      ifw_lock:
+        doc: 'Calls ifw_lock() to lock the firewall'
+        args: {}
+        rets: {}
+
+      ifw_unlock:
+        doc: 'Calls ifw_unlock() to unlock the firewall'
+        args: {}
+        rets: {}
+
+      ifw_req_challenge:
+        doc: 'Requests a challenge for a given key (see ifw_reqChallenge())'
+        args:
+          key_id:
+            doc: 'The key to use in the challenge-response'
+            type: U8
+        rets:
+          err:
+            doc: 'INCPFWError_e as returned by the fn'
+            type: U8
+            enum: 'INCPFWError'
+          challenge:
+            doc: ''
+            type: U64
+
+      ifw_submit_response:
+        doc: 'Submits a response to a challenge (see ifw_submitResponse())'
+        args:
+          response:
+            doc: ''
+            type: U64
+        rets:
+          err:
+            doc: 'INCPFWError_e as returned by the fn'
+            type: U8
+            enum: 'INCPFWError'
+
+      ifw_set_key:
+        doc: 'Set key (see ifw_setKey(). S/S may store it persistently, 0x0 disables it)'
+        args:
+          key_id:
+            type: U8
+          keya:
+            type: U64
+          keyb:
+            type: U64
+          use_secret:
+            doc: 'Uses the IFW_SECRET to calculate the usable key. See ifw_setKey()'
+            type: U8
+            enum: 'Bool'
+        rets:
+          err:
+            doc: 'INCPFWError_e as returned by the fn'
+            type: U8
+            enum: 'INCPFWError'
+
+    configs: &_ifw_configs
+      ifw_autolock_timeout:
+        type: U16
+        default: 0 # disabled and unlock on startup
+        doc: 'Time in seconds for firewall to automatically lock itself once unlocked. 0 is never'
+
+      ifw_challenge_timeout:
+        type: U16
+        default: 30
+        doc: |
+          Time in seconds for a client to submit a response to a challenge.
+
+          If expired, the challenge (and possible response) became invalid and
+          a new challenge needs to be requested.
+
+    enums: &_ifw_enums
+      INCPFWError:
+        doc: ""
+        cgen: True
+        enum:
+          NONE: 0
+          INVALID_KEY: 1
+          DISABLED_KEY: 2
+          TIMEOUT: 3
+          INVALID_RESPONSE: 4
+          NO_CHALLENGE: 5
+          INVALID_STATE: 6
+          CHALLENGE_ISSUED: 7
+          DISABLED_SECRET: 8
+
+      INCPFWState:
+        doc: ""
+        cgen: True
+        enum:
+          LOCKED: 0
+          UNLOCKED: 1
+          CHALLENGED: 2
+  rdp:
+    data: &_rdp_data
+      rdp_state:           { type: "U8",  doc: "State of the RDP connection which can be: CLOSED (0), LISTEN (1), SYN_SENT (2), SYN_RCVD (3), OPEN (4) and CLOSE_WAIT (5)." }
+      rdp_tx_bytes:        { type: "U32", doc: "Number of RDP bytes sent excluding headers (total sum of bytes in segment body)." }
+      rdp_tx_bytes_data:   { type: "U32", doc: "Number of RDP bytes sent (RDP body and header)." }
+      rdp_tx_msgs:         { type: "U32", doc: "Number of RDP segments sent (including, packets, acks, syn acks, etc)." }
+      rdp_tx_msgs_data:    { type: "U32", doc: "Number of RDP segments sent which carry data for upper layers." }
+      rdp_tx_resends:      { type: "U32", doc: "Number of RDP segments which are not successfully sent at first and need to be resent." }
+      rdp_rx_bytes:        { type: "U32", doc: "Number of RDP bytes received (just the body, not the header)." }
+      rdp_rx_bytes_data:   { type: "U32", doc: "Number of RDP bytes received excluding headers (total sum of bytes in segment body)." }
+      rdp_rx_msgs:         { type: "U32", doc: "Number of RDP segments received (including, packets, acks, syn acks, etc)." }
+      rdp_rx_msgs_data:    { type: "U32", doc: "Number of RDP segments received which carry data for upper layers." }
+      rdp_rx_dups:         { type: "U32", doc: "Number of RDP segments received in duplicate (without counting the first one)." }
+      rdp_rx_out_of_order: { type: "U32", doc: "Number of RDP segments received with a sequence number which is greater than expected. This includes cases when two segments were swapped and one was lost mid sequence. Only applicable for window sizes greater than 1." }
+
+    reports: &_rdp_reports
+      rdp:
+        members:
+          - rdp_state
+          - rdp_tx_bytes
+          - rdp_tx_bytes_data
+          - rdp_tx_msgs
+          - rdp_tx_msgs_data
+          - rdp_tx_resends
+          - rdp_rx_bytes
+          - rdp_rx_bytes_data
+          - rdp_rx_msgs
+          - rdp_rx_msgs_data
+          - rdp_rx_dups
+          - rdp_rx_out_of_order
+
+subsystems:
+  COMMON:
+    addr: 15
+
+    data:
+      I2C0TxBytes:            { type: "U32",   enum: Null,       doc: "Number of bytes worth of I3C messages sent over I2C bus 0." }
+      I2C0TxMsgs:             { type: "U32",   enum: Null,       doc: "Number of I3C messages sent over I2C bus 0." }
+      I2C0TxErrs:             { type: "U32",   enum: Null,       doc: "Number of I3C messages that failed to be sent over I2C bus 0 (not counting retries)." }
+      I2C0RxBytes:            { type: "U32",   enum: Null,       doc: "Number of bytes worth of I3C messages received over I2C bus 0." }
+      I2C0RxMsgs:             { type: "U32",   enum: Null,       doc: "Number of I3C messages received over I2C bus 0." }
+      I2C0RxErrs:             { type: "U32",   enum: Null,       doc: "Number of I3C messages that failed to be decoded after they were received on I2C bus 0." }
+
+      I2C1TxBytes:            { type: "U32",   enum: Null,       doc: "Same as I2C0TxBytes but for I2C bus 1. Not implemented." }
+      I2C1TxMsgs:             { type: "U32",   enum: Null,       doc: "Same as I2C0TxMsgs but for I2C bus 1. Not implemented." }
+      I2C1TxErrs:             { type: "U32",   enum: Null,       doc: "Same as I2C0TxErrs but for I2C bus 1. Not implemented." }
+      I2C1RxBytes:            { type: "U32",   enum: Null,       doc: "Same as I2C0RxBytes but for I2C bus 1. Not implemented." }
+      I2C1RxMsgs:             { type: "U32",   enum: Null,       doc: "Same as I2C0RxMsgs but for I2C bus 1. Not implemented." }
+      I2C1RxErrs:             { type: "U32",   enum: Null,       doc: "Same as I2C0RxErrs but for I2C bus 1. Not implemented." }
+
+      SI2CRxDecodeErrs:       { type: "U16",   enum: Null,       doc: "Number of received I3C messages that the I2C service failed to decode.", }
+      SI2CRxDeliverErrs:      { type: "U16",   enum: Null,       doc: "Number of received I3C messages that the I2C service failed to deliver to the HK service.", }
+      SI2CTxMsgs:             { type: "U16",   enum: Null,       doc: "Number of I3C messages that were successfully enqueued in service I2C queue to be sent.", }
+      SI2CTxBytes:            { type: "U16",   enum: Null,       doc: "Number of bytes worth of I3C messages that were successfully enqueued in service I2C queue to be sent.", }
+      SI2CTxErrs:             { type: "U16",   enum: Null,       doc: "Number of I3C messages that after being successfully enqueued in service I2C queue couldn't be sent.", }
+      SI2CEnqErrs:            { type: "U16",   enum: Null,       doc: "Number of I3C messages not enqueued, probably due to I2C service queue being full.", }
+
+      eeprom_start_phy:       { type: "U32",   enum: Null,       doc: "EEPROM's initial physical address.", }
+      eeprom_end_phy:         { type: "U32",   enum: Null,       doc: "EEPROM's final physical address.", }
+      eeprom_start_vir:       { type: "U32",   enum: Null,       doc: "EEPROM's initial virtual address (as access by io_read & io_write).", }
+      eeprom_end_vir:         { type: "U32",   enum: Null,       doc: "EEPROM's final virtual address (as access by io_read & io_write).", }
+      eeprom_size:            { type: "U32",   enum: Null,       doc: "EEPROM's total size.", }
+      eeprom_page_size:       { type: "U32",   enum: Null,       doc: "EEPROM's page size.", }
+      eeprom_page_num:        { type: "U32",   enum: Null,       doc: "Number of pages the EEPROM has.", }
+
+      heap_free:              { type: "I32",   enum: Null,       doc: "The available memory in bytes (-1 if N/A)" }
+      rand:                   { type: "U32",   enum: Null,       doc: "Returns a random value (for testing purposes)." }
+      one:                    { type: "U32",   enum: Null,       doc: "Returns a one (for testing purposes)." }
+      ss:                     { type: "U8",    enum: Null,       doc: "The subsystem's address", }
+      time_boot:              { type: "U32",   enum: Null,       doc: "Seconds since a given subsystem was booted.", }
+      time_ot:                { type: "U32",   enum: Null,       doc: "Seconds since OBC's Real-Time Clock (RTC) was first booted. Keeps counting idependently of wether OBC is ON of OFF.", }
+      time_real:              { type: "U32",   enum: Null,       doc: "Seconds since epoch (01/01/1970) until now. Allows us to know what 'now' is.", }
+      time_rt0:               { type: "U32",   enum: Null,       doc: "Time in seconds since epoch when time_ot was 0. Recall that 'time_real = time_rt0 + time_ot'. It's 0 if unset. Even if set, it may be de-synchronized.", }
+      time_syncronized:       { type: "U8",    enum: Null,       doc: "Indication if the time_rt0 is de-synchronized.",}
+      hk_scmode:              { type: "U8",    enum: "SCMode",   doc: "Spacecraft mode.",  }
+      hk_gateway:             { type: "U8",    enum: "ISTsatSS", doc: "I2C address of the I3C default gateway currently in use. In safe mode ir should be the OBC, in normal mode the COM.", }
+      hk_cpuload1m:           { type: "U8",    enum: Null,       doc: "CPU usage in % (i.e. from 0 to 1000) of the last minute", }
+      hk_cpuload15:           { type: "U16",   enum: Null,       doc: "CPU usage in %0 (i.e. from 0 to 1000) of the last 15secs.", }
+      hk_incpRxMsgs:          { type: "U32",   enum: Null,       doc: "Number of INCP msgs received (included invalid ones)", }
+      hk_incpRxErr:           { type: "U32",   enum: Null,       doc: "Number of INCP msgs received (included invalid ones)", }
+      hk_incpDropped:         { type: "U32",   enum: Null,       doc: "Number which (although valid) were not processed correctly. E.g. a request for an not implemented data var.", }
+      log_countI:             { type: "U32",   enum: Null,       doc: "Number of INFO level log messages produced.", }
+      log_countW:             { type: "U32",   enum: Null,       doc: "Number of WARNING level log messages produced.", }
+      log_countE:             { type: "U32",   enum: Null,       doc: "Number of ERROR level log messages produced.", }
+      log_countF:             { type: "U32",   enum: Null,       doc: "Number of FATAL level log messages produced.", }
+      conf_version:           { type: "U32",   enum: Null,       doc: "Version of the config set of the system", }
+      conf_persistent:        { type: "U8",    enum: Null,       doc: "Can store configs persistently (0: false, 1: true).", }
+      conf_size:              { type: "U32",   enum: Null,       doc: "sizeof(hkConfigAP_t)", }
+      conf_sn:                { type: "U16",   enum: Null,       doc: "Last sequence number of AP", }
+      conf_tsv:               { type: "U32",   enum: Null,       doc: "timestamp, in OBC TIME, of last change to volatile configs", }
+      conf_tsp:               { type: "U32",   enum: Null,       doc: "timestamp, in OBC TIME, of last change to persistent configs", }
+      conf_p0_valid:          { type: "U8",    enum: Null,       doc: "valid config (Atomic Page 0, 0:    false, 1: true)", }
+      conf_p0_sn:             { type: "U16",   enum: Null,       doc: "Sequence Number (Atomic Page 0)", }
+      conf_p1_valid:          { type: "U8",    enum: Null,       doc: "valid config (Atomic Page 1)", }
+      conf_p1_sn:             { type: "U16",   enum: Null,       doc: "Sequence Number (Atomic Page 1, 0: false, 1: true)", }
+      version_commit:         { type: "U32",   enum: Null,       doc: "The git commit hash of the software when the bin was built", }
+      version_major:          { type: "U8",    enum: Null,       doc: "The major version as specifified in the module .mk file", }
+      version_minor:          { type: "U8",    enum: Null,       doc: "The minor version as specifified in the module .mk file", }
+      version_schema_hash:    { type: "U32",   enum: Null,       doc: "The hash of the schema file", }
+
+
+    reports:
+      I2C0:
+        members:
+          - I2C0TxBytes
+          - I2C0TxMsgs
+          - I2C0TxErrs
+          - I2C0RxBytes
+          - I2C0RxMsgs
+          - I2C0RxErrs
+
+      I2C1:
+        members:
+          - I2C1TxBytes
+          - I2C1TxMsgs
+          - I2C1TxErrs
+          - I2C1RxBytes
+          - I2C1RxMsgs
+          - I2C1RxErrs
+
+      I2C:
+        members:
+          - I2C0
+          - I2C1
+
+      SI2C:
+        members:
+          - SI2CRxDecodeErrs
+          - SI2CRxDeliverErrs
+          - SI2CTxMsgs
+          - SI2CTxErrs
+          - SI2CEnqErrs
+
+      eeprom:
+        members:
+          - eeprom_start_phy
+          - eeprom_end_phy
+          - eeprom_start_vir
+          - eeprom_end_vir
+          - eeprom_size
+          - eeprom_page_size
+          - eeprom_page_num
+
+      log:
+        members:
+          - log_countI
+          - log_countW
+          - log_countE
+          - log_countF
+
+      hk:
+        members:
+          - hk_scmode
+          - hk_cpuload1m
+          - hk_cpuload15
+          - hk_incpRxMsgs
+          - hk_incpRxErr
+          - hk_incpDropped
+          - log
+
+      time:
+        members:
+          - time_boot
+          - time_ot
+          #- time_real
+          #- time_rt0
+          #- time_syncronized
+
+      conf:
+        members:
+          - conf_version
+          - conf_persistent
+          - conf_size
+          - conf_sn
+          - conf_tsv
+          - conf_tsp
+
+      conf_full:
+        members:
+          - conf
+          - conf_p0_valid
+          - conf_p0_sn
+          - conf_p1_valid
+          - conf_p1_sn
+
+      version:
+        members:
+          - version_commit
+          - version_major
+          - version_minor
+          - version_schema_hash
+
+
+    commands:
+      masspong:
+        doc: 'Sends many pong msgs to another subsystem of certain size'
+        args:
+          num:
+            doc: 'Number of messages to send'
+            type: U16
+          size:
+            doc: 'Size of the INCP Pong data field'
+            type: U8
+          dst:
+            doc: 'Destination subsystem of the msgs'
+            type: U8
+          delay:
+            doc: 'How miliseconds to wait before executing the command'
+            type: U16
+          delayInterMsg:
+            doc: 'If 0 send msgs as fast as possible. If not 0, then use a random delay between pongs'
+            type: U8
+
+        returns: {}
+
+      cowsay:
+        doc: 'prints a cowsay using logs'
+        args:
+          text:
+            doc: 'The text displayed by the cow'
+            type: VDATA
+        returns: {}
+
+      hk_reboot:
+        doc: 'reboots the subsystem'
+        args: {}
+        returns: {}
+
+      hk_forceEvent:
+        doc: 'Forcibly triggers an event'
+        args:
+          event:
+            doc: 'The incpEvent_e event identifier'
+            type: U16
+        returns: {}
+
+      hk_changeMode:
+        doc: Starts the process of changing into a give spacecraft mode. See hk_scmode for result.
+        args:
+          mode:
+            doc: ''
+            type: U8
+            enum: 'SCMode'
+        rets: {}
+
+      config_get:
+        doc: Reads the config value with a given ID
+        args:
+          record:
+            doc: "0:volatile, 1:sub, 2:persistent (but can't be used), 3:default"
+            type: U8
+          id:
+            doc: The ID of the config in question (see `configs` section in istsat.yml)
+            type: U8
+        returns:
+          err:
+            doc: 0:successful, 1:invalid record, 2:unknown id
+            type: U8
+          value:
+            doc: Value of config
+            type: DVALUE
+
+      config_set:
+        doc: Changes the config value with a given ID
+        args:
+          record:
+            doc: '0:volatile, 1:sub'
+            type: U8
+          id:
+            doc: The ID of the config in question (see `configs` section in istsat.yml)
+            type: U8
+          value:
+            doc: New value for the config (must match the config's type)
+            type: DVALUE
+        returns:
+          err:
+            doc: 0-successful, 1-invalid record, 2-unknown id, 3-invalid type in value parameter
+            type: U8
+
+      config_copy:
+        doc: |
+          Copies a record to another record. To apply an entire set of config
+          change use config_set on sub and the copy it to volatile record. Can
+          alse be used to reset configs by copying from default to volatile.
+        args:
+          from:
+            doc:  0:volatile, 1:sub, 2:persistent, 3:default
+            type: U8
+          to:
+            doc:  0:volatile, 1:sub, 2:persistent
+            type: U8
+        returns:
+          err:
+            doc: '0:OK, 1:invalid from, 2:invalid to_level, 3: error_reading, 4:error_writing'
+            type: U8
+
+      config_delete:
+        doc: 'Deletes the persistent configs (if any exist)'
+        args: {}
+        rets:
+          err:
+            doc: 0:successful, 1:No configs to delete, 2:IOError
+            type: U8
+          ioerror:
+            type: U8
+            enum: IOError
+
+      log_pack_test:
+        doc: 'Causes a packed log msgs to be sent'
+        args:
+          a:
+            doc: 'formatation argument'
+            type: U16
+          dst:
+            doc: 'Addr to send the message'
+            type: U8
+        rets: {}
+
+      log_level_test:
+        doc: 'Tries to send a series of log messages of all levels'
+        args: {}
+        rets: {}
+
+      io_read:
+        doc: 'Reads a portion of memory using IO_read()'
+        args:
+          addr:
+            doc: 'The address in memory to read (as passed to io_read()'
+            type: U32
+          size:
+            doc: 'Size in bytes of the memory to read. Up to 64 bytes'
+            type: U8
+        rets:
+          err:
+            doc: 'A IOError_e value if positive, if -1 then the argument `size` was too large'
+            type: I8
+          data:
+            doc: 'The read memory'
+            type: VDATA
+
+      io_write:
+        doc: 'Writes a portion of memory using IO_write()'
+        args:
+          addr:
+            doc: 'The address in memory to read (as passed to io_read()'
+            type: U32
+          data:
+            doc: 'The read memory'
+            type: VDATA
+        rets:
+          err:
+            doc: 'A IOError_e value'
+            type: I8
+
+      not:
+        doc: "Test cmd fields' enums"
+        args:
+          v:
+            doc: ''
+            type: U8
+            enum: Bool
+        rets:
+          r:
+            doc: ''
+            type: U8
+            enum: Bool
+
+      add:
+        doc: "Sums two numbers"
+        args:
+          a:
+            doc: ''
+            type: I32
+          b:
+            doc: ''
+            type: I32
+        rets:
+          r:
+            doc: ''
+            type: I32
+
+      read_str:
+        doc: 'Reads a C str at a memory addr up to 96 bytes long'
+        args:
+          addr:
+            doc: 'The address in memory to read (as passed to io_read()'
+            type: U32
+        rets:
+          err:
+            doc: '0 if ok, else 1'
+            type: I8
+          data:
+            doc: 'The read memory'
+            type: VDATA
+
+      factory_reset:
+        doc: 'Resets the SS into a pristine state. Should affect stored telemetry/logs, psate, configs (except volatile)'
+        args:
+          reboot:
+            doc: |
+              Whether to perform a subsystem reboot after a factory reset
+            type: U8
+            enum: Bool
+        rets: {}
+
+      eeprom_erase_all:
+        doc: |
+          Deletes all data saved on the COM's EEPROM. When performing a factory reset the function called is the
+          same one that is run when this command is used.
+        args: {}
+        rets:
+          err:
+            type: U8
+            doc: |
+              Error status according to EEPROMError enum.
+
+      not_implemented:
+        doc: |
+          Test command that is not supposed to be implemented in any of the subsystems. The command was
+          created to fulfil an ESA requirement (PLS-FKT-070).
+        args: {}
+        rets: {}
+
+    configs:
+      si2c_min_timeout:
+        type: U16
+        default: 25
+        doc: "Milliseconds and i2c tx is considered lost"
+
+      si2c_max_attempts:
+        type: U8
+        default: 5
+        doc: "number of attempts to do before considering a msg tx error"
+
+      si2c_bus:
+        type: U8
+        default: 0
+        doc: "Which i2C bus to use (0-both but try bus 0 1st, 1-both but try bus 1 1st, 2-bus0 only, 3-bus1 only)"
+
+      log_level:
+        type: U8
+        default: 5
+        doc: "Priority level of log msgs to be reported (0-NONE, 1-FATAL, 2-ERROR, 3-WARN, 4-INFO, 5-DEBUG)."
+
+      log_sv0:
+        type: U8
+        default: 8
+        doc: "Where to send the logs, 0 means disabled"
+
+      log_sv1:
+        type: U8
+        default: 0
+        doc: "Where to send the logs, 0 means disabled"
+
+      log_packed:
+        type: U8
+        default: 0
+        enum: Bool
+        doc: "Use logPack msgs if true, uses development logMsg otherwise"
+
+      hk_gateway:
+        type: U8
+        default: 1
+        enum: HkGateway
+        doc: |
+          Selects the I2C default gateway subsystem, depending on the SC mode.
+          The 2 options for default gateway should be the OBC or the COM.
+          The deafult gateway is the subsystem to which the TTC sends all the
+          INCP messages to be unpacked and then sent to the destination subsystem.
+
+          Should be set to 1 for flight.
+
+          See the I3C docs for more details.
+
+          NOTE: This config is different from the hk_gateway data request. The data-req
+          returns which the I2C address of the subsystem that is being used as the default
+          gateway at that moment. Therefore, it may change according to the SC mode.
+
+      hk_eventsv:
+        type: U8
+        default: 1
+        doc: 'Where to send the events (i2c addr)'
+
+      test_config:
+        type: U8
+        default: 42
+        doc: "For testing purposes, otherwise useless."
+
+      test_config2:
+        type: U8
+        default: 0
+        enum: Bool
+        doc: "For testing purposes, otherwise useless."
+
+      test_fake_unresponsive:
+        type: U8
+        default: 0
+        doc: "If not 0, then the subsystem ignores all messages from OBC"
+
+      profile_name:
+        type: S16
+        default: "Default"
+        doc: "If the configs were set from a profile this parameter is set with the profile's name."
+
+      profile_version:
+        type: U16
+        default: 0
+        doc: "If the configs were set from a profile this parameter is set with the profile's version."
+
+    events:
+      test:
+        doc: Used for testing.
+
+      boot:
+        doc: The system just turned on.
+
+      hk_safe2normal:
+        doc: The system changed from safe to normal mode.
+
+      rdp_connect:
+        doc: An RDP connection was established.
+
+      rdp_disconnect:
+        doc: An established RDP connection was lost.
+
+    enums:
+      ISTsatSS:
+        cgen: False
+        enum:
+          OBC: 1
+          TTC: 2
+          COM: 3
+          EPS: 4
+          PL: 5
+          BEACON: 6
+          GS: 7
+          EGSE: 8
+          TEST: 9
+          COMMON: 15
+          NONE: 16
+
+      SCMode:
+        cgen: True
+        doc: |
+          Spacecraft modes. Note that the actual modes modes are only INIT, SAFE and NORMAL.
+        enum:
+          'INIT': 0
+          'INIT2SAFE': 1
+          'SAFE': 2
+          'SAFE2NORMAL': 3
+          'NORMAL': 4
+          'NORMAL2SAFE': 5
+
+      TTCModulation:
+        cgen: True
+        doc: The modulation pair (TX/RX) (should match TOPModeType_e)
+        enum:
+          'AFSK': 0 # 1200 bit/s
+          'BPSK': 1 # 9600 bit/s
+          'FSK': 2 # 9600 bit/s
+          'GMSK': 3 # 9600 bit/s
+          'QPSK': 4 # 19200 bit/s
+          'BPSK_SLOW': 5 # 4800 bit/s
+
+      Bool:
+        cgen: True
+        enum:
+          'false': 0
+          'true': 1
+
+      RemoteArrayState:
+        cgen: True
+        doc: State in which the process of fetching information (the Remote Array) from another subsystem is at.
+        enum:
+          'INIT': 0
+          'LOADING': 1
+          'SYNCED': 2
+          'SAVING': 3
+          'ERROR': 4
+
+      HkGateway:
+        cgen: True
+        doc: Subsystem to which the TTC sends the INCP messages to be unopacked and sent to the destination subsystem.
+        enum:
+          'OBC': 0 # Always OBC
+          'COM_IF_NORMAL': 1 # For flight
+          'COM': 2 # Always COM
+
+      IOError:
+        cgen: False
+        doc: 'Maps to IOError_e in os/io.h'
+        enum:
+          'NONE': 0
+          'DEV': 1
+          'SIZE': 2
+          'ADDR': 3
+
+      <<: *_ifw_enums
+
+  OBC:
+    addr: 1
+
+    data:
+      # Sensor readings
+      gyro_x:            { type: "I32",   doc: "Current x component of gyro reading (in 10^-7 deg/s)"}
+      gyro_y:            { type: "I32",   doc: "Current y component of gyro reading (in 10^-7 deg/s)"}
+      gyro_z:            { type: "I32",   doc: "Current z component of gyro reading (in 10^-7 deg/s)"}
+      mag_B_x:           { type: "I32",   doc: "Current x component of mag reading (in nT)"}
+      mag_B_y:           { type: "I32",   doc: "Current y component of mag reading (in nT)"}
+      mag_B_z:           { type: "I32",   doc: "Current z component of mag reading (in nT)"}
+      sunsensor_xplus:   { type: "U32",   doc: "Current reading from the X+ photodiode (in uV)"}
+      sunsensor_xminus:  { type: "U32",   doc: "Current reading from the X- photodiode (in uV)"}
+      sunsensor_yplus:   { type: "U32",   doc: "Current reading from the Y+ photodiode (in uV)"}
+      sunsensor_yminus:  { type: "U32",   doc: "Current reading from the Y- photodiode (in uV)"}
+      sunsensor_zplus:   { type: "U32",   doc: "Current reading from the Z+ photodiode (in uV)"}
+
+      # ADCS
+      adcs_gyro_x:                 { type: "I32",   doc: "x component of gyro reading (in 10^-7 deg/s) used for ADCS calculations"}
+      adcs_gyro_y:                 { type: "I32",   doc: "y component of gyro reading (in 10^-7 deg/s) used for ADCS calculations"}
+      adcs_gyro_z:                 { type: "I32",   doc: "z component of gyro reading (in 10^-7 deg/s) used for ADCS calculations"}
+      adcs_mag_B_x:                { type: "I32",   doc: "x component of mag reading (in nT) used for ADCS calculations"}
+      adcs_mag_B_y:                { type: "I32",   doc: "y component of mag reading (in nT) used for ADCS calculations"}
+      adcs_mag_B_z:                { type: "I32",   doc: "z component of mag reading (in nT) used for ADCS calculations"}
+      adcs_sunsensor_xplus:        { type: "U32",   doc: "Readings from the X+ photodiode (in uV) used for ADCS calculations"}
+      adcs_sunsensor_xminus:       { type: "U32",   doc: "Readings from the X- photodiode (in uV) used for ADCS calculations"}
+      adcs_sunsensor_yplus:        { type: "U32",   doc: "Readings from the Y+ photodiode (in uV) used for ADCS calculations"}
+      adcs_sunsensor_yminus:       { type: "U32",   doc: "Readings from the Y- photodiode (in uV) used for ADCS calculations"}
+      adcs_sunsensor_zplus:        { type: "U32",   doc: "Readings from the Z+ photodiode (in uV) used for ADCS calculations"}
+      adcs_sun_vec_B_x:            { type: "I32",   doc: "x component of sun vector (in 10^-6 adim)"}
+      adcs_sun_vec_B_y:            { type: "I32",   doc: "y component of sun vector (in 10^-6 adim)"}
+      adcs_sun_vec_B_z:            { type: "I32",   doc: "z component of sun vector (in 10^-6 adim)"}
+      adcs_sat_pos_x:              { type: "I32",   doc: "x component of sat. position (in 10^-2 meters)"}
+      adcs_sat_pos_y:              { type: "I32",   doc: "y component of sat. position (in 10^-2 meters)"}
+      adcs_sat_pos_z:              { type: "I32",   doc: "z component of sat. position (in 10^-2 meters)"}
+      adcs_sat_pos_lat:            { type: "I32",   doc: "latitude of sat. position (in 10^-8 radians)"}
+      adcs_sat_pos_lon:            { type: "I32",   doc: "longitude of sat. position (in 10^-8 radians)"}
+      adcs_sat_pos_r:              { type: "I32",   doc: "magnitude of sat. position vector (in 10^-2 meters)"}
+      adcs_sun_pos_x:              { type: "I32",   doc: "x component of sun position (in 10^2 meters)"}
+      adcs_sun_pos_y:              { type: "I32",   doc: "y component of sun position (in 10^2 meters)"}
+      adcs_sun_pos_z:              { type: "I32",   doc: "z component of sun position (in 10^2 meters)"}
+      adcs_mag_ECI_x:              { type: "I32",   doc: "x component of magnetic field estimation in ECI (in 10^-4 nT)"}
+      adcs_mag_ECI_y:              { type: "I32",   doc: "y component of magnetic field estimation in ECI (in 10^-4 nT)"}
+      adcs_mag_ECI_z:              { type: "I32",   doc: "z component of magnetic field estimation in ECI (in 10^-4 nT)"}
+      adcs_quat_x:                 { type: "I32",   doc: "x component of quaternion estimation (in 10^-9 adim)"}
+      adcs_quat_y:                 { type: "I32",   doc: "y component of quaternion estimation (in 10^-9 adim)"}
+      adcs_quat_z:                 { type: "I32",   doc: "z component of quaternion estimation (in 10^-9 adim)"}
+      adcs_quat_w:                 { type: "I32",   doc: "w component of quaternion estimation (in 10^-9 adim)"}
+      adcs_bias_x:                 { type: "I32",   doc: "x component of gyro bias estimation (in 10^-7 deg/s)"}
+      adcs_bias_y:                 { type: "I32",   doc: "y component of gyro bias estimation (in 10^-7 deg/s)"}
+      adcs_bias_z:                 { type: "I32",   doc: "z component of gyro bias estimation (in 10^-7 deg/s)"}
+      adcs_dutycycle_x:            { type: "I16",   doc: "x component of duty cycle (in 10^-4 adim)" }
+      adcs_dutycycle_y:            { type: "I16",   doc: "y component of duty cycle (in 10^-4 adim)" }
+      adcs_dutycycle_z:            { type: "I16",   doc: "z component of duty cycle (in 10^-4 adim)" }
+      adcs_est_status:             { type: "U8",    doc: "Bitfield of sattellite and sun estimation status (0x01: Sat position integration; 0x02: Sun position integration)." }
+      adcs_state:                  { type: "U8",    enum: ADCSState, doc: "State of ADCS state machine" }
+      adcs_det_done:               { type: "U8",    enum: Bool,      doc: "True if detumbling is finished, false if not" }
+      adcs_ang_vel_magn:           { type: "U32",   doc: "Magnitude of angular velocity in (in 10^-7 deg/s)." }
+      adcs_sat_updates_left:       { type: "U8",    doc: "Number of sat updates left to be used for sat position integration stored persistently in the OBC SS." }
+      adcs_sat_updates_time_left:  { type: "U32",   doc: "Time left until the most recent sat update stored persistently in the OBC becomes obsolete, i.e. is deleted and there are no updates left for the ADCS task to keep doing sat position integration." }
+      adcs_sun_updates_left:       { type: "U8",    doc: "Same as adcs_sat_updates_left but for sun updates." }
+      adcs_sun_updates_time_left:  { type: "U32",   doc: "Same as adcs_sat_updates_time_left but for sun updates." }
+
+      current_gyro:           { type: "I32",   doc: "Gyroscope current in uA" }
+      current_mag:            { type: "I32",   doc: "Magnetometer current in uA" }
+      temperature:            { type: "I32",   doc: "Value measured by the OBC's internal temperature sensor (in 10² degrees celsius)." }
+      temperature1:           { type: "I32",   doc: "Value measured by the OBC's external temperature sensor (in 10² degrees celsius)." }
+
+      # COMMS
+      uart_tx_bytes:       { type: "U32", doc: "Total number of bytes sent over the UART bus (communication interface with the TTC SS)." }
+      uart_rx_bytes:       { type: "U32", doc: "Total number of bytes received on the UART bus (communication interface with the TTC SS)." }
+
+      # top_tx_msgs:      { type: "U32", doc: "" }
+      top_tx_msgs_data:    { type: "U32", doc: "Number of successful TOP messages sent to the TTC (over the UART bus)." }
+      # top_tx_errs:      { type: "U16", doc: "" }
+      # top_tx_timeouts:  { type: "U16", doc: "Number of messages which were unacknowledged (didn't receive neither ack nor nack)" }
+      # top_rx_msgs:      { type: "U32", doc: "" }
+      top_rx_msgs_data:    { type: "U32", doc: "Number of TOP messages received from the TTC (over the UART bus)." }
+      # top_rx_errs:      { type: "U16", doc: "" }
+
+      csp_tx_msgs:         { type: "U32", doc: "Number of radio messages sent with the CubeSat Protocol (CSP) layer." }
+      csp_tx_bytes:        { type: "U32", doc: "Number of bytes worth of radio messages sent with the CubeSat Protocol (CSP) layer." }
+      csp_rx_msgs:         { type: "U32", doc: "Number of radio messages received with the CubeSat Protocol (CSP) layer." }
+      csp_rx_bytes:        { type: "U32", doc: "Number of bytes worth of radio messages received with the CubeSat Protocol (CSP) layer." }
+
+      # rdp_state:           { type: "U8",  doc: "Current state of the OBC's RDP state machine" }
+      # rdp_tx_bytes:        { type: "U32", doc: "" }
+      # rdp_tx_bytes_data:   { type: "U32", doc: "" }
+      # rdp_tx_msgs:         { type: "U32", doc: "" }
+      # rdp_tx_msgs_data:    { type: "U32", doc: "" }
+      # rdp_tx_resends:      { type: "U32", doc: "" }
+      # rdp_rx_bytes:        { type: "U32", doc: "" }
+      # rdp_rx_bytes_data:   { type: "U32", doc: "" }
+      # rdp_rx_msgs:         { type: "U32", doc: "" }
+      # rdp_rx_msgs_data:    { type: "U32", doc: "" }
+      # rdp_rx_dups:         { type: "U32", doc: "" }
+      # rdp_rx_out_of_order: { type: "U32", doc: "" }
+
+      # HK
+      # hk_part_reports_head:  { type: "U32",  doc: "Returns the start memory address where reports are saved in the OBC.", }
+      # hk_part_reports_tail:  { type: "U32",  doc: "Returns the end memory address where reports are saved in the OBC.", }
+      hk_part_reports_used:  { type: "U32",  doc: "Returns the amount of OBC storage that has been filled with reports (in bytes).", }
+      hk_part_reports_avail: { type: "U32",  doc: "Returns the amount of OBC storage that is still available for reports (in bytes).", }
+      # hk_part_logs_head:     { type: "U32",  doc: "", }
+      # hk_part_logs_tail:     { type: "U32",  doc: "", }
+      hk_part_logs_used:     { type: "U32",  doc: "Returns the amount of OBC storage that has been filled with logs (in bytes).", }
+      hk_part_logs_avail:    { type: "U32",  doc: "Returns the amount of OBC storage that is still available for logs (in bytes).", }
+
+      hk_mon_ttc_liveliness: { type: "U32",                   doc: "Milliseconds since last TTC heartbeat (i.e. ping) message.", }
+      hk_mon_ttc_next_reset: { type: "U32",                   doc: "Milliseconds until next TTC reset attempt (UINT32_MAX if not attempting to reset).", }
+      hk_mon_ttc_num_resets: { type: "U16",                   doc: "Number of performed attempts to reset the TTC subsystem.", }
+      hk_mon_ttc_status:     { type: "U8",  enum: "SStatus",  doc: "TTC monitoring status according to SStatus enum. It's determined based on whether the TTC is responding to OBC pings.", }
+
+      hk_mon_com_liveliness: { type: "U32",                   doc: "Milliseconds since last COM heartbeat (i.e. ping) message.", }
+      hk_mon_com_next_reset: { type: "U32",                   doc: "Milliseconds until next COM reset attempt (UINT32_MAX if not attempting to reset).", }
+      hk_mon_com_num_resets: { type: "U16",                   doc: "Number of performed attempts to reset the COM subsystem.", }
+      hk_mon_com_status:     { type: "U8",  enum: "SStatus",  doc: "COM monitoring status according to SStatus enum. It's determined based on whether the COM is responding to OBC pings.", }
+
+      hk_mon_eps_liveliness: { type: "U32",                   doc: "Milliseconds since last EPS heartbeat (i.e. ping) message.", }
+      hk_mon_eps_next_reset: { type: "U32",                   doc: "Milliseconds until next EPS reset attempt (UINT32_MAX if not attempting to reset).", }
+      hk_mon_eps_num_resets: { type: "U16",                   doc: "Number of performed attempts to reset the COM subsystem.", }
+      hk_mon_eps_status:     { type: "U8",  enum: "SStatus",  doc: "EPS monitoring status according to SStatus enum. It's determined based on whether the EPS is responding to OBC pings.", }
+
+      hk_mon_pl_liveliness: { type: "U32",                   doc: "Milliseconds since last PL heartbeat (i.e. ping) message.", }
+      hk_mon_pl_next_reset: { type: "U32",                   doc: "Milliseconds until next PL reset attempt (UINT32_MAX if not attempting to reset).", }
+      hk_mon_pl_num_resets: { type: "U16",                   doc: "Number of performed attempts to reset the COM subsystem.", }
+      hk_mon_pl_status:     { type: "U8",  enum: "SStatus",  doc: "PL monitoring status according to SStatus enum. It's determined based on whether the PL is responding to OBC pings.", }
+
+      hk_tm_save_suppressed:      { type: "U8",  enum: 'Bool', doc: "Returns whether the storage of reports is being done. See hk_tm_save_period config.", }
+      hk_tm_transmit_suppressed:  { type: "U8",  enum: 'Bool', doc: "Returns whether the transmission/broadcast (via radio) of reports is being done. See hk_tm_transmit_period config.", }
+      hk_tm_round_save_count:     { type: "U32", enum: Null,   doc: "Number for data save collection rounds performed since boot",                         }
+      hk_tm_round_forward_count:  { type: "U32", enum: Null,   doc: "Number for data forward collection rounds performed since boot",                      }
+      hk_tm_round_transmit_count: { type: "U32", enum: Null,   doc: "Number for data transmit collection rounds performed since boot",                     }
+      hk_tm_data_saved_count:     { type: "U32", enum: Null,   doc: "Number for data reports or vars stored since boot",                                   }
+      hk_tm_data_forwarded_count: { type: "U32", enum: Null,   doc: "Number for data reports or vars forwarded since boot",                                }
+      hk_tm_data_transmit_count:  { type: "U32", enum: Null,   doc: "Number for data reports or vars transmit since boot",                                 }
+      hk_tm_logs_forwarded_count: { type: "U32", enum: Null,   doc: "Number of lagPack messages that have been forwarded (in Normal mode) since boot.",    }
+
+      hk_scm_warmedup:            { type: "U8",  enum: 'Bool', doc: "If the next boot will be a warm boot. A boot is considered to be warm when there has been a previous boot that transitioned to Safe mode. ", }
+      hk_scm_mode_change_ot:      { type: "U32", enum: Null,   doc: "Timestamp (in OBC time) of when entered current mode", }
+
+      comms_last_pet:             { type: "U32", enum: Null, doc: "Time_ot when the most recent GS pet was performed.", }
+      comms_last_sc_reset:        { type: "U32", enum: Null, doc: "Time_ot when the last SC reset was performed caused by absence of a GS pet.", }
+      comms_first_boot:           { type: "U32", enum: Null, doc: "Time_ot when OBC 1st booted which is the same as when the last factory reset was performed.", }
+      comms_last_ttc_reset:       { type: "U32", enum: Null, doc: "Time_ot when last TTC reboot was performed.", }
+      comms_last_ttc_sync:        { type: "U32", enum: Null, doc: "Time_ot when last TTC config sync was performed.", }
+
+      <<: *_ifw_data
+
+    reports:
+      sensor_readings:
+        members:
+          - gyro_x
+          - gyro_y
+          - gyro_z
+          - mag_B_x
+          - mag_B_y
+          - mag_B_z
+          - sunsensor_xplus
+          - sunsensor_xminus
+          - sunsensor_yplus
+          - sunsensor_yminus
+          - sunsensor_zplus
+
+      adcs_quat:
+        members:
+          - adcs_quat_x
+          - adcs_quat_y
+          - adcs_quat_z
+          - adcs_quat_w
+
+      adcs_bias:
+        members:
+          - adcs_bias_x
+          - adcs_bias_y
+          - adcs_bias_z
+
+      adcs_dbg:
+        members:
+          - adcs_gyro_x
+          - adcs_gyro_y
+          - adcs_gyro_z
+          - adcs_mag_B_x
+          - adcs_mag_B_y
+          - adcs_mag_B_z
+          - adcs_sunsensor_xplus
+          - adcs_sunsensor_xminus
+          - adcs_sunsensor_yplus
+          - adcs_sunsensor_yminus
+          - adcs_sunsensor_zplus
+          - adcs_dutycycle_x
+          - adcs_dutycycle_y
+          - adcs_dutycycle_z
+
+      # COMMS
+      uart:
+        members:
+          - uart_tx_bytes
+          - uart_rx_bytes
+
+      top:
+        members:
+          # - top_tx_msgs
+          - top_tx_msgs_data
+          # - top_tx_errs
+          # - top_tx_timeouts
+          # - top_rx_msgs
+          - top_rx_msgs_data
+          # - top_rx_errs
+
+      csp:
+        members:
+          - csp_tx_msgs
+          - csp_tx_bytes
+          - csp_rx_msgs
+
+      # rdp:
+      #   members:
+      #     - rdp_state
+      #     - rdp_tx_bytes
+      #     - rdp_tx_bytes_data
+      #     - rdp_tx_msgs
+      #     - rdp_tx_msgs_data
+      #     - rdp_tx_resends
+      #     - rdp_rx_bytes
+      #     - rdp_rx_bytes_data
+      #     - rdp_rx_msgs
+      #     - rdp_rx_msgs_data
+      #     - rdp_rx_dups
+      #     - rdp_rx_out_of_order
+
+      coms:
+        members:
+          - uart
+          - top
+          - csp
+          # - rdp
+          # - ss
+
+      hk_mon_ttc:
+        members:
+          - hk_mon_ttc_liveliness
+          - hk_mon_ttc_next_reset
+          - hk_mon_ttc_num_resets
+          - hk_mon_ttc_status
+
+      hk_mon_com:
+        members:
+          - hk_mon_com_liveliness
+          - hk_mon_com_next_reset
+          - hk_mon_com_num_resets
+          - hk_mon_com_status
+
+      hk_mon_eps:
+        members:
+          - hk_mon_eps_liveliness
+          - hk_mon_eps_next_reset
+          - hk_mon_eps_num_resets
+          - hk_mon_eps_status
+
+      hk_mon_pl:
+        members:
+          - hk_mon_pl_liveliness
+          - hk_mon_pl_next_reset
+          - hk_mon_pl_num_resets
+          - hk_mon_pl_status
+
+      hk_mon:
+        members:
+          - hk_mon_ttc
+          - hk_mon_com
+          - hk_mon_eps
+          - hk_mon_pl
+
+      hk_tm:
+        members:
+          - hk_tm_save_suppressed
+          - hk_tm_transmit_suppressed
+          - hk_tm_round_save_count
+          - hk_tm_round_forward_count
+          - hk_tm_round_transmit_count
+          - hk_tm_data_saved_count
+          - hk_tm_data_forwarded_count
+          - hk_tm_data_transmit_count
+          - hk_tm_logs_forwarded_count
+
+      # hk_scmode:
+      #   members:
+      #     - hk_scm_warmedup
+      #     - hk_scm_mode_change_ot
+
+      hk_master:
+        members:
+          - hk_part_reports_used
+          - hk_part_logs_used
+          - hk_mon
+          - hk_tm
+          - hk_scmode
+
+      # tm_long:
+      #   members:
+      #     - temperature
+      #     - temperature1
+
+      # tm_short:
+      #   members:
+      #     - current_gyro
+      #     - current_mag
+      #     - hk_mon_ttc_status
+      #     - hk_mon_com_status
+      #     - hk_mon_eps_status
+      #     - hk_mon_pl_status
+      #     - time_boot
+      #     - eps_pets_done
+
+      # tm_periodic:
+      #   members:
+      #     - current_gyro
+      #     - current_mag
+      #     - hk_mon_ttc_status
+      #     - hk_mon_com_status
+      #     - hk_mon_eps_status
+      #     - hk_mon_pl_status
+      #     - log_countW
+      #     - log_countE
+      #     - log_countF
+
+      # tm_both:
+      #   members:
+      #     - tm_long
+      #     - tm_short
+
+      tm_health:
+        members:
+          - time
+          - hk_mon
+          - hk_tm
+          - hk_scmode
+          - ifw
+
+      <<: *_ifw_reports
+
+      flight_broadcast:
+        members:
+          - time
+          - hk_scmode
+          - adcs_state
+          - adcs_gyro_x
+          - adcs_gyro_y
+          - adcs_gyro_z
+          - adcs_mag_B_x
+          - adcs_mag_B_y
+          - adcs_mag_B_z
+          - adcs_quat
+          - adcs_sunsensor_xplus
+          - adcs_sunsensor_xminus
+          - adcs_sunsensor_yplus
+          - adcs_sunsensor_yminus
+          - adcs_sunsensor_zplus
+          - temperature
+          - temperature1
+          - hk_mon_ttc_status
+          - hk_mon_eps_status
+          - hk_mon_com_status
+          - hk_mon_pl_status
+
+      flight_pass:
+        members:
+          - time_boot
+          - hk_scmode
+          - hk_mon_ttc_status
+          - hk_mon_eps_status
+          - hk_mon_com_status
+          - hk_mon_pl_status
+          - adcs_state
+          - adcs_ang_vel_magn
+          - adcs_sat_updates_left
+          - adcs_sat_updates_time_left
+          - adcs_sun_updates_left
+          - adcs_sun_updates_time_left
+
+    commands:
+      setMode:
+        doc: no doc
+        args:
+          mode:
+            doc: mode
+            type: U8
+          submode:
+            doc: submode
+            type: U8
+        returns:
+          success:
+            doc: success
+            type: U8
+
+      ping:
+        doc: 'Execute a ping on another subsystem'
+        args:
+          dst:
+            doc: 'target subsystem'
+            type: U8
+        returns:
+          rtt:
+            doc: 'Return Time Trip in mili-seconds'
+            type: U32
+
+      top_reset:
+        doc: 'Modem Software Reset'
+        args: {}
+        returns:
+          success:
+            doc: 'Success'
+            type: U8
+
+      top_resetStatus:
+        doc: 'Get the reason for Modem Reset'
+        args: {}
+        returns:
+          success:
+            doc: 'Success'
+            type: U8
+          status:
+            doc: 'Reason'
+            type: U8
+
+      top_modulation:
+        doc: 'Set a modulation on Modem'
+        args:
+          modulation:
+            doc: 'Modulation ID'
+            type: U8
+            enum: TTCModulation
+        returns:
+          success:
+            doc: 'Success'
+            type: U8
+
+      top_rssi:
+        doc: 'Get the current RSSI'
+        args: {}
+        returns:
+          success:
+            doc: 'Success'
+            type: U8
+          rssi:
+            doc: 'TTC RSSI'
+            type: U8
+
+      top_distress:
+        doc: 'Emit a beacon when no communcation'
+        args: {}
+        returns:
+          success:
+            doc: 'Success'
+            type: U8
+
+      top_ax25_src:
+        doc: 'Set AX.25 source Address'
+        args:
+          addr:
+            doc: 'Must be exactly 7 bytes long'
+            type: VDATA
+        returns:
+          success:
+            doc: '0:Success, 1:invalid size of addr, 2:timeout'
+            type: U8
+
+      top_ax25_dst:
+        doc: 'Set AX.25 Destination Address'
+        args:
+          addr:
+            doc: 'Must be exactly 7 bytes long'
+            type: VDATA
+        returns:
+          success:
+            doc: '0:Success, 1:invalid size of addr, 2:timeout'
+            type: U8
+
+      top_sendData:
+        doc: 'Sends Data to GS'
+        args:
+          data:
+            doc: Data to Send
+            type: VDATA
+        returns:
+          success:
+            doc: 'Success'
+            type: U8
+
+      top_operation:
+        doc: 'Command to tell the TTC in which mode the SC is working in (operation mode).'
+        args:
+          mode:
+            doc: 'Operation ID: 0:Init; 1:Normal; 2:Safe'
+            type: U8
+        returns:
+          success:
+            doc: 'Success'
+            type: U8
+
+      top_setTestMode:
+        doc: 'Set TTC Test Mode, were it periodically sends transmits something over radio'
+        args:
+          mode:
+            doc: '0:off, 1:flags, 2:rawdata, 3:AX25 frame'
+            type: U8
+        returns:
+          success:
+            doc: 'Success (0:ok, 1:timeout)'
+            type: U8
+
+      top_error_status:
+        doc: Request the TTC's error status bit field (were possible errors are indicated)
+        args: {}
+        returns:
+          success:
+            doc: 'Success (0:ok, 1:timeout)'
+            type: U8
+          error_status:
+            doc: 'The error status (ask Fabien what it means)'
+            type: U16
+
+      top_setUplinkMode:
+        doc: |
+          Sets the mode of the uplink channel with the COM. Either forwards HDLC
+          flags delimeted frames. Or byte stream straight from the decoder
+        args:
+          mode:
+            doc: '0:frame, 1:byte'
+            type: U8
+        returns:
+          success:
+            doc: 'Success (0:ok, 1:timeout)'
+            type: U8
+
+      radio_setLPL:
+        doc: "Actives or deactives the TTC's Low Power Listening mode"
+        args:
+          active:
+            doc: ''
+            enum: Bool
+            type: U8
+        returns:
+          success:
+            doc: 'Success (0:ok, 1:timeout)'
+            type: U8
+
+      radio_setModulation:
+        doc: |
+          Modulation to use for communications.
+          The OBC uses a modulation timer to check whether the TTC is using the
+          modulation scheme chosen in this command. This check is only done in
+          Normal mode since the modulation scheme to use in Safe mode is AFSK.
+        args:
+          modulation:
+            doc: ''
+            enum: TTCModulation
+            type: U8
+        returns:
+          success:
+            doc: 'Success (0:ok, 1:timeout)'
+            type: U8
+
+      radio_uptime:
+        doc: "Retrieves the Uptime of the TTC via uart"
+        args: {}
+        returns:
+          success:
+            doc: 'Success (0:ok, 1:timeout)'
+            type: U8
+          uptime:
+            doc: ''
+            type: U32
+
+      top_ping:
+        doc: Performs a TOP ping to the TTC trought the UART interface
+        args: {}
+        returns:
+          success:
+            doc: 'Success (0:ok, 1:busy, 2:timeout)'
+            type: U8
+
+      radio_send_top_msg:
+        doc: Sends a raw TOP msg to the TTC
+        args:
+          opcode:
+            doc: |
+              Can be anything but don't expect miracles if it doesn't respect
+              the TOPOpcode_e enum. (see top/spec.h for details).
+            type: U8
+
+          pl:
+            doc: A byte array of data to be placed in the TOP frame's payload
+            type: VDATA
+
+        returns:
+          success:
+            doc: 'Success (0:ok, 1:busy, 2:timeout)'
+            type: U8
+
+      hk_download_reports:
+        doc: 'Starts the download procedure (via DataStream) of the telemetry reports'
+        args:
+          filter_ts_start:
+            type: U32
+            doc: |
+              Only download reports with timestamp equal of greater than this value.
+
+              see HKDSCtx_start() for more details.
+              oooo
+
+          filter_ts_stop:
+            type: U32
+            doc: |
+              Only download reports with timestamp smaller than this value.
+
+              see HKDSCtx_start() for more details.
+
+        rets: {}
+
+      hk_delete_reports:
+        doc: 'Deletes all saved reports in the FRAM'
+        args: {}
+        rets:
+          err:
+            type: U8
+            doc: The SFSError returned by the sfs_deleteAll function
+
+      hk_download_logs:
+        doc: 'Starts the download procedure (via DataStream) of the logs'
+        args:
+          filter_ts_start:
+            type: U32
+            doc: |
+              Only download logs with timestamp equal of greater than this value.
+
+              see HKDSCtx_start() for more details.
+
+          filter_ts_stop:
+            type: U32
+            doc: |
+              Only download logs with timestamp smaller than this value.
+
+              see HKDSCtx_start() for more details.
+
+        rets: {}
+
+      hk_delete_logs:
+        doc: 'Deletes all saved logs in the FRAM'
+        args: {}
+        rets:
+          err:
+            type: U8
+            doc: The SFSError returned by the sfs_deleteAll function
+
+      hk_download_stop:
+        doc: 'Stops a running download'
+        args: {}
+        rets:
+          err:
+            type: U8
+            doc: '0: ok; 1: download not running'
+
+      hk_scm_set_warmedup:
+        doc:
+            Changes the persistent variable controling if the next boot will be a warm boot.
+        args:
+          warmedup:
+            type: U8
+            enum: Bool
+            doc: '0/false: Next boot will be cold; 1/true: Next boot will be warm'
+        rets:
+          err:
+            type: U8
+            enum: Bool
+            doc: '0/false: No error; 1/true: Error'
+
+      hk_scm_set_mode:
+        doc: 'DEV ONLY! Changes the spacecraft mode but skips over the normal mode-changing procedures.'
+        args:
+          mode:
+            type: U8
+            doc: 'See SCMode enum.'
+        rets: {}
+
+      hk_print_stack_data:
+        doc: ''
+        args: {}
+        rets: {}
+
+      gs_pet:
+        doc: "Pets the communication pseudo-WDT and the factory reset timer (assumed that it's invoked from the Ground segment)"
+        args: {}
+        rets: {}
+
+      rtc_get:
+        doc: |
+          Gets the current timestamp being kept by the internal or external RTC. The timestamp
+          is returned in seconds since the standard epoch (1/1/1970).
+
+          The OBC has 2 RTCs. An internal one, which resets to 0 every time the OBC reboots
+          and an external one which keeps counting even when the OBC has no power (for a maximum
+          of a few days).
+          On boot, the internal RTC gets the current timestamp from the external RTC and counts
+          "on its own" from then on until the next OBC boot. The time_ot variable is requested
+          from the internal RTC. Hence, upon setting a new timestamp for the external RTC, the
+          internal one ois only updated according to the new timestamp when the OBC boots.
+          When the external RTC is unreachable, the internal RTC starts counting from 0.
+
+          NOTE The external RTC is only available for OBC board version 2.
+          NOTE Timestamps are only valid up until 2070.
+          NOTE Getting the current internal RTC timestamp is the same as requesting the time_ot variable.
+        args:
+          which:
+            type: U8
+            doc: |
+              Which RTC to get.
+              0: The internal RTC.
+              1: The external RTC.
+        returns:
+          err:
+            type: U8
+            enum: Bool
+            doc: |
+              Whether there was an error getting the RTC current timestamp.
+              True: There was an error (timestamp shpuld be 0).
+              False: There was no error (timestamp value valid).
+          timestamp:
+            type: U32
+            doc: 'Current timestamp in seconds according to 1/1/1970 epoch.'
+
+      rtc_set:
+        doc: |
+          Sets the current timestamp being kept by the internal or external RTC. The timestamp
+          should be provided in seconds since the standard epoch (1/1/1970).
+
+          The OBC has 2 RTCs. An internal one, which resets to 0 every time the OBC reboots
+          and an external one which keeps counting even when the OBC has no power (for a maximum
+          of a few days).
+          On boot, the internal RTC gets the current timestamp from the external RTC and counts
+          "on its own" from then on until the next OBC boot. The time_ot variable is requested
+          from the internal RTC. Hence, upon setting a new timestamp for the external RTC, the
+          internal one ois only updated according to the new timestamp when the OBC boots.
+          When the external RTC is unreachable, the internal RTC starts counting from 0.
+
+          NOTE The external RTC is only available for OBC board version 2.
+          NOTE Timestamps are only valid up until 2070.
+        args:
+          which:
+            type: U8
+            doc: |
+              Which RTC to set.
+              0: The internal RTC.
+              1: The external RTC.
+          timestamp:
+            type: U32
+            doc: 'Timestamp in seconds according to 1/1/1970 epoch to set for the RTC.'
+        returns:
+          err:
+            type: U8
+            enum: Bool
+            doc: |
+              Whether there was an error setting the RTC.
+              True: There was an error.
+              False: There was no error.
+
+      time_set_rtc_external:
+        doc: 'Sets the reference in the external WDT (via wtd_setTime())'
+        args:
+          time:
+            type: U32
+            doc: ''
+        returns:
+          err:
+            type: U8
+            doc: 'rtcError_e'
+
+      pstate_delete:
+        doc: "Deletes the OBC's pstate"
+        args: {}
+        returns:
+          err:
+            type: U8
+            enum: 'IOError'
+
+      <<: *_ifw_cmds
+
+      adcs_set_sat_update:
+        doc:  |
+          Saves a new satellite position update to the satellite position updates's
+          array, if there is space for it.
+        args:
+          pos_x:
+            type: I32
+          pos_y:
+            type: I32
+          pos_z:
+            type: I32
+          vel_x:
+            type: I32
+          vel_y:
+            type: I32
+          vel_z:
+            type: I32
+          time_ref:
+            type: U32
+        returns:
+          err:
+            type: U8
+            enum: Bool
+
+      adcs_get_sat_update:
+        doc: |
+          Gets the values of a satellite position update by its update_number, which
+          corresponds to its index in the satellite position array.
+        args:
+          update_number:
+            type: U8
+        returns:
+          err:
+            type: U8
+            enum: Bool
+          pos_x:
+            type: I32
+          pos_y:
+            type: I32
+          pos_z:
+            type: I32
+          vel_x:
+            type: I32
+          vel_y:
+            type: I32
+          vel_z:
+            type: I32
+          time_ref:
+            type: U32
+
+      adcs_get_sat_update_current:
+        doc: |
+          Gets the values of a satellite position update that is currently being used for
+          satellite position integration.
+        args: {}
+        returns:
+          pos_x:
+            type: I32
+          pos_y:
+            type: I32
+          pos_z:
+            type: I32
+          vel_x:
+            type: I32
+          vel_y:
+            type: I32
+          vel_z:
+            type: I32
+          time_ref:
+            type: U32
+
+      adcs_get_sat_update_next:
+        doc: |
+          Gets the values of a satellite position update that is going to be used next for
+          satellite position integration, which has already been loaded to OBC's vollatile storage.
+        args: {}
+        returns:
+          update_number:
+            doc: Update's index in the satellite position array
+            type: I8
+          pos_x:
+            type: I32
+          pos_y:
+            type: I32
+          pos_z:
+            type: I32
+          vel_x:
+            type: I32
+          vel_y:
+            type: I32
+          vel_z:
+            type: I32
+          time_ref:
+            type: U32
+
+      adcs_del_sat_update:
+        doc: |
+          Deletes a satellite position update/TLE by update number which corresponds
+          to the update's index in the satellite updates's array.
+          If update_number argument is set to 255, then current update (which is only stored
+          in volatile memory) is deleted.
+        args:
+          update_number:
+            type: U8
+        returns:
+          err:
+            type: U8
+            enum: Bool
+
+      adcs_del_sat_updates:
+        doc: |
+          Deletes all satellite position updates. Also deletes current uptade
+          (which is only stored in volatile memory).
+        args: {}
+        returns: {}
+
+      adcs_set_sun_update:
+        doc: |
+          Saves a new sun position update to the sun position updates's
+          array, if there is space for it.
+        args:
+          pos_x:
+            type: I32
+          pos_y:
+            type: I32
+          pos_z:
+            type: I32
+          vel_x:
+            type: I32
+          vel_y:
+            type: I32
+          vel_z:
+            type: I32
+          time_ref:
+            type: U32
+        returns:
+          err:
+            type: U8
+            enum: Bool
+
+      adcs_get_sun_update:
+        doc: |
+          Gets the values of a sun position update by its update_number, which
+          corresponds to its index in the sun position array.
+        args:
+          update_number:
+            type: U8
+        returns:
+          err:
+            type: U8
+            enum: Bool
+          pos_x:
+            type: I32
+          pos_y:
+            type: I32
+          pos_z:
+            type: I32
+          vel_x:
+            type: I32
+          vel_y:
+            type: I32
+          vel_z:
+            type: I32
+          time_ref:
+            type: U32
+
+      adcs_get_sun_update_current:
+        doc: |
+          Gets the values of a satellite position update that is currently being used for
+          sun position integration.
+        args: {}
+        returns:
+          update_number:
+            doc: Update's index in the sun position array
+            type: I8
+          pos_x:
+            type: I32
+          pos_y:
+            type: I32
+          pos_z:
+            type: I32
+          vel_x:
+            type: I32
+          vel_y:
+            type: I32
+          vel_z:
+            type: I32
+          time_ref:
+            type: U32
+
+      adcs_get_sun_update_next:
+        doc: |
+          Gets the values of a sun position update that is going to be used next for
+          sun position integration, which has already been loaded to OBC's vollatile storage.
+        args: {}
+        returns:
+          update_number:
+            doc: Update's index in the sun position array
+            type: I8
+          pos_x:
+            type: I32
+          pos_y:
+            type: I32
+          pos_z:
+            type: I32
+          vel_x:
+            type: I32
+          vel_y:
+            type: I32
+          vel_z:
+            type: I32
+          time_ref:
+            type: U32
+
+      adcs_del_sun_update:
+        doc: |
+          Deletes a sun position update/TLE by update number which corresponds
+          to the update's index in the sun updates's array.
+          If update_number argument is set to 255, then current update (which is only stored
+          in volatile memory) is deleted.
+        args:
+          update_number:
+            type: U8
+        returns:
+          err:
+            type: U8
+            enum: Bool
+
+      adcs_del_sun_updates:
+        doc: |
+          Deletes all sun position updates. Also deletes current update (which is only stored
+          in volatile memory).
+        args: {}
+        returns: {}
+
+      adcs_set_dcm_eci2ecef:
+        doc: 'Command used to edit eci2ecef matrix'
+        args:
+          value0_0:
+            type: I32
+          value0_1:
+            type: I32
+          value0_2:
+            type: I32
+          value1_0:
+            type: I32
+          value1_1:
+            type: I32
+          value1_2:
+            type: I32
+          value2_0:
+            type: I32
+          value2_1:
+            type: I32
+          value2_2:
+            type: I32
+          time_ref:
+            type:  U32
+        returns: {}
+
+      adcs_get_dcm_eci2ecef:
+        doc: 'Command used to get values for eci2ecef matrix'
+        args: {}
+        returns:
+          value0_0:
+            type: I32
+          value0_1:
+            type: I32
+          value0_2:
+            type: I32
+          value1_0:
+            type: I32
+          value1_1:
+            type: I32
+          value1_2:
+            type: I32
+          value2_0:
+            type: I32
+          value2_1:
+            type: I32
+          value2_2:
+            type: I32
+          time_ref:
+            type:  U32
+
+      mtq_set_dutycycle:
+        doc: |
+          Sets a new dutycycle for OBC's magnetorquers.
+
+          WARNING: This function doesn't enable the magnetorquers, therefore it only
+          works if they are initialized by the OBC.
+        args:
+          x:
+            type: I8
+            doc: 'Should be a value between -100 and 100'
+          y:
+            type: I8
+            doc: 'Should be a value between -100 and 100'
+          z:
+            type: I8
+            doc: 'Should be a value between -100 and 100'
+        returns:
+          error:
+            type: U8
+            enum: Bool
+
+      adcs_hitl_eci2ecef:
+        doc: 'Execute eci2ecef funtion in HITL mode'
+        args:
+          eci_x:
+            type: I32
+          eci_y:
+            type: I32
+          eci_z:
+            type: I32
+          clock_sec:
+            type: U32
+        returns:
+          ecef_x:
+            type: I32
+          ecef_y:
+            type: I32
+          ecef_z:
+            type: I32
+
+      adcs_hitl_ecef2sph:
+        doc: 'Execute ecef2sph funtion in HITL mode'
+        args:
+          ecef_x:
+            type: I32
+          ecef_y:
+            type: I32
+          ecef_z:
+            type: I32
+        returns:
+          sph_lat:
+            type: Float
+          sph_lon:
+            type: Float
+          sph_r:
+            type: I32
+
+      adcs_hitl_ecef2eci:
+        doc: 'Execute ecef2eci funtion in HITL mode'
+        args:
+          ecef_x:
+            type: I32
+          ecef_y:
+            type: I32
+          ecef_z:
+            type: I32
+          clock_sec:
+            type: U32
+        returns:
+          eci_x:
+            type: I32
+          eci_y:
+            type: I32
+          eci_z:
+            type: I32
+
+      adcs_hitl_ned2ecef:
+        doc: 'Execute ned2ecef funtion in HITL mode'
+        args:
+          vec_NED_x:
+            type: I32
+          vec_NED_y:
+            type: I32
+          vec_NED_z:
+            type: I32
+          r_sph_lat:
+            type: Float
+          r_sph_lon:
+            type: Float
+          r_sph_r:
+            type: I32
+        returns:
+          ecef_x:
+            type: I32
+          ecef_y:
+            type: I32
+          ecef_z:
+            type: I32
+
+      adcs_hitl_earthECIE_2_sunECI:
+        doc: 'Execute earthECIE_2_sunECI funtion in HITL mode'
+        args:
+          earthECIE_x:
+            type: I32
+          earthECIE_y:
+            type: I32
+          earthECIE_z:
+            type: I32
+        returns:
+          sunECI_x:
+            type: I32
+          sunECI_y:
+            type: I32
+          sunECI_z:
+            type: I32
+
+      adcs_hitl_position_determination_Sun:
+        doc: 'Execute position_determination_Sun funtion in HITL mode'
+        args:
+          pos_Sun_current_x:
+            type: I32
+          pos_Sun_current_y:
+            type: I32
+          pos_Sun_current_z:
+            type: I32
+          pos_Earth_update_x:
+            type: I32
+          pos_Earth_update_y:
+            type: I32
+          pos_Earth_update_z:
+            type: I32
+          vel_Earth_update_x:
+            type: I32
+          vel_Earth_update_y:
+            type: I32
+          vel_Earth_update_z:
+            type: I32
+          time_since_update_ms:
+            type: U32
+          time_ms:
+            type: U32
+          update_RV:
+            type: U8
+        returns:
+          pos_Sun_current_x:
+            type: I32
+          pos_Sun_current_y:
+            type: I32
+          pos_Sun_current_z:
+            type: I32
+
+      adcs_hitl_quaternion_rotation:
+          doc: 'Execute quaternion_rotation funtion in HITL mode'
+          args:
+            v_0:
+              type: Float
+            v_1:
+              type: Float
+            v_2:
+              type: Float
+            q_0:
+              type: Float
+            q_1:
+              type: Float
+            q_2:
+              type: Float
+            q_3:
+              type: Float
+          returns:
+            w_0:
+              type: Float
+            w_1:
+              type: Float
+            w_2:
+              type: Float
+
+      adcs_hitl_rotation_matrix_to_quaternion:
+        doc: 'Execute rotation_matrix_to_quaternion funtion in HITL mode'
+        args:
+          A_00:
+            type: Float
+          A_01:
+            type: Float
+          A_02:
+            type: Float
+          A_10:
+            type: Float
+          A_11:
+            type: Float
+          A_12:
+            type: Float
+          A_20:
+            type: Float
+          A_21:
+            type: Float
+          A_22:
+            type: Float
+        returns:
+          q_0:
+            type: Float
+          q_1:
+            type: Float
+          q_2:
+            type: Float
+          q_3:
+            type: Float
+
+      adcs_hitl_triad:
+        doc: 'Execute triad funtion in HITL mode'
+        args:
+          b_mag_0:
+            type: Float
+          b_mag_1:
+            type: Float
+          b_mag_2:
+            type: Float
+          b_sun_0:
+            type: Float
+          b_sun_1:
+            type: Float
+          b_sun_2:
+            type: Float
+          r_mag_0:
+            type: Float
+          r_mag_1:
+            type: Float
+          r_mag_2:
+            type: Float
+          r_sun_0:
+            type: Float
+          r_sun_1:
+            type: Float
+          r_sun_2:
+            type: Float
+        returns:
+          q_0:
+            type: Float
+          q_1:
+            type: Float
+          q_2:
+            type: Float
+          q_3:
+            type: Float
+
+      adcs_hitl_determine_sun_direction:
+        doc: 'Execute determine_sun_direction funtion in HITL mode'
+        args:
+          sunsensor_currents_0:
+            type: I32
+          sunsensor_currents_1:
+            type: I32
+          sunsensor_currents_2:
+            type: I32
+          sunsensor_currents_3:
+            type: I32
+          sunsensor_currents_4:
+            type: I32
+        returns:
+          sun_direction_0:
+            type: Float
+          sun_direction_1:
+            type: Float
+          sun_direction_2:
+            type: Float
+
+      adcs_hitl_compute_attitude_estimation:
+        doc: 'Execute compute_attitude_estimation funtion in HITL mode'
+        args:
+          magnetometer_0:
+            type: I32
+          magnetometer_1:
+            type: I32
+          magnetometer_2:
+            type: I32
+          sunsensor_0:
+            type: I32
+          sunsensor_1:
+            type: I32
+          sunsensor_2:
+            type: I32
+          gyroscope_0:
+            type: I32
+          gyroscope_1:
+            type: I32
+          gyroscope_2:
+            type: I32
+          pos_Sun_x:
+            type: I32
+          pos_Sun_y:
+            type: I32
+          pos_Sun_z:
+            type: I32
+          magfield_eci_x:
+            type: I32
+          magfield_eci_y:
+            type: I32
+          magfield_eci_z:
+            type: I32
+        returns:
+          q_0:
+            type: Float
+          q_1:
+            type: Float
+          q_2:
+            type: Float
+          q_3:
+            type: Float
+          bias_0:
+            type: Float
+          bias_1:
+            type: Float
+          bias_2:
+            type: Float
+          corrected_gyro_0:
+            type: I32
+          corrected_gyro_1:
+            type: I32
+          corrected_gyro_2:
+            type: I32
+
+      adcs_hitl_compute_bdot_control:
+        doc: 'Execute compute_bdot_control funtion in HITL mode'
+        args:
+          timeref_prev:
+            type: U32
+          timeref:
+            type: U32
+          magnetometer_prev_0:
+            type: I32
+          magnetometer_prev_1:
+            type: I32
+          magnetometer_prev_2:
+            type: I32
+          magnetometer_0:
+            type: I32
+          magnetometer_1:
+            type: I32
+          magnetometer_2:
+            type: I32
+        returns:
+          dutycycle_0:
+            type: I16
+          dutycycle_1:
+            type: I16
+          dutycycle_2:
+            type: I16
+
+      adcs_hitl_compute_pointing_control:
+        doc: 'Execute compute_pointing_control funtion in HITL mode'
+        args:
+          q_hat_0:
+            type: Float
+          q_hat_1:
+            type: Float
+          q_hat_2:
+            type: Float
+          q_hat_3:
+            type: Float
+          corrected_gyro_0:
+            type: I32
+          corrected_gyro_1:
+            type: I32
+          corrected_gyro_2:
+            type: I32
+          magnetometer_0:
+            type: I32
+          magnetometer_1:
+            type: I32
+          magnetometer_2:
+            type: I32
+          pos_sat_eci_x:
+            type: I32
+          pos_sat_eci_y:
+            type: I32
+          pos_sat_eci_z:
+            type: I32
+        returns:
+          dutycycle_0:
+            type: I16
+          dutycycle_1:
+            type: I16
+          dutycycle_2:
+            type: I16
+
+      adcs_hitl_position_determination:
+        doc: 'Execute position_determination funtion in HITL mode'
+        args:
+          pos_update_x:
+            type: I32
+          pos_update_y:
+            type: I32
+          pos_update_z:
+            type: I32
+          vel_update_x:
+            type: I32
+          vel_update_y:
+            type: I32
+          vel_update_z:
+            type: I32
+          time_since_update_ms:
+            type: U32
+          time_ms:
+            type: U32
+          time_DCM_sec:
+            type: U32
+          update_RV:
+            enum: 'Bool'
+            type: U8
+        returns:
+          pos_current_x:
+            type: I32
+          pos_current_y:
+            type: I32
+          pos_current_z:
+            type: I32
+          pos_current_sph_lat:
+            type: Float
+          pos_current_sph_lon:
+            type: Float
+          pos_current_sph_r:
+            type: I32
+
+      adcs_hitl_MagFieldComputation:
+        doc: 'Execute MagFieldComputation funtion in HITL mode'
+        args:
+          r_sph_lat:
+            type: Float
+          r_sph_lon:
+            type: Float
+          r_sph_r:
+            type: I32
+          time_DCM_sec:
+            type: U32
+        returns:
+          MagneticField_ECI_x:
+            type: I32
+          MagneticField_ECI_y:
+            type: I32
+          MagneticField_ECI_z:
+            type: I32
+
+      # adcs_set_test:
+      #   doc: ''
+      #   args:
+      #     value:
+      #       type: I32
+      #   returns: {}
+
+    configs:
+      hk_tm_0_period:
+        type: U16
+        default: 0
+        doc: |
+          Time interval (in seconds) between report requests for telemetry
+          collection round 0.
+          There are a total of 3 rounds.
+
+          0 means disabled.
+
+      hk_tm_0_flags:
+        type: U8
+        default: 3
+        doc: |
+          Bitfield/Flags which determine what to do with the data collected in
+          telemetry collection round 0.
+          From most significant to least significant bits: (Transmit, Forward, Save).
+
+          Save (001) - Collected data is saved in OBC's own storage
+          Forward (010) - Collected data is forwarded to hk_tm_forward_addr while respecting hk_forward_mode
+          Transmit (100) - Collected data is sent in AX25 broadcast frames to the ground via radio
+
+      hk_tm_0_obc:
+        type: U8
+        default: 'report:OBC:flight_broadcast'
+        doc: |
+          The ID of the report or varaible to collect from the OBC SS for telemetry
+          collection round 0.
+
+          255 means disabled.
+
+      hk_tm_0_ttc:
+        type: U8
+        default: 'report:TTC:flight_broadcast'
+        doc: |
+          The ID of the report or varaible to collect from the TTC SS for telemetry
+          collection round 0.
+
+          255 means disabled.
+
+      hk_tm_0_eps:
+        type: U8
+        default: 'report:EPS:flight_broadcast'
+        doc: |
+          The ID of the report or varaible to collect from the EPS SS for telemetry
+          collection round 0.
+
+          255 means disabled.
+
+      hk_tm_0_com:
+        type: U8
+        default: 'report:COM:flight_broadcast'
+        doc: |
+          The ID of the report or varaible to collect from the COM SS for telemetry
+          collection round 0.
+
+          255 means disabled.
+
+      hk_tm_0_pl:
+        type: U8
+        default: 'report:PL:flight_broadcast'
+        doc: |
+          The ID of the report or varaible to collect from the PL SS for telemetry
+          collection round 0.
+
+          255 means disabled.
+
+      hk_tm_1_period:
+        type: U16
+        default: 0
+        doc: |
+          Same as hk_tm_0_period but for telemetry collection round 1.
+
+      hk_tm_1_flags:
+        type: U8
+        default: 0
+        doc: |
+          Same as hk_tm_0_flags but for telemetry collection round 1.
+
+      hk_tm_1_obc:
+        type: U8
+        default: 255
+        doc: |
+          Same as hk_tm_0_obc but for telemetry collection round 1.
+
+      hk_tm_1_ttc:
+        type: U8
+        default: 255
+        doc: |
+          Same as hk_tm_0_ttc but for telemetry collection round 1.
+
+      hk_tm_1_eps:
+        type: U8
+        default: 255
+        doc: |
+          Same as hk_tm_0_eps but for telemetry collection round 1.
+
+      hk_tm_1_com:
+        type: U8
+        default: 255
+        doc: |
+          Same as hk_tm_0_com but for telemetry collection round 1.
+
+      hk_tm_1_pl:
+        type: U8
+        default: 255
+        doc: |
+          Same as hk_tm_0_pl but for telemetry collection round 1.
+
+      hk_tm_2_period:
+        type: U16
+        default: 0
+        doc: |
+          Same as hk_tm_0_period but for telemetry collection round 1.
+
+      hk_tm_2_flags:
+        type: U8
+        default: 0
+        doc: |
+          Same as hk_tm_0_flags but for telemetry collection round 1.
+
+      hk_tm_2_obc:
+        type: U8
+        default: 255
+        doc:  |
+          Same as hk_tm_0_obc but for telemetry collection round 1.
+
+      hk_tm_2_ttc:
+        type: U8
+        default: 255
+        doc:  |
+          Same as hk_tm_0_ttc but for telemetry collection round 1.
+
+      hk_tm_2_eps:
+        type: U8
+        default: 255
+        doc:  |
+          Same as hk_tm_0_eps but for telemetry collection round 1.
+
+      hk_tm_2_com:
+        type: U8
+        default: 255
+        doc:  |
+          Same as hk_tm_0_com but for telemetry collection round 1.
+
+      hk_tm_2_pl:
+        type: U8
+        default: 255
+        doc:  |
+          Same as hk_tm_0_pl but for telemetry collection round 1.
+
+      hk_tm_forward_mode:
+        type: U8
+        enum: 'ForwardMode'
+        default: 0
+        doc: |
+          What the OBC should do with the data reports and/or variables collected
+          by the telemetry rounds according to SC mode.
+
+      hk_tm_forward_addr:
+        type: U8
+        default: 3 # COM
+        doc: |
+          The I2C address of the SS to which the collected telemetry data is forwarded
+          to when the hk_tm_forward_mode is ON or ON_IF_NORMAL.
+          The OBC will also send logPack messages to this address in Normal mode. To
+          forward logPack messsages the OBC doesn't regard the hk_tm_forward_mode config,
+          as it does for telemetry data.
+
+      hk_tm_transmit_addr:
+        type: U8
+        default: 7 # GS
+        doc: |
+          The I2C address of the SS to which the collected telemetry data is transmitted
+          to via radio.
+
+      hkds_download_timeout:
+        type: U16
+        default: 120
+        doc: |
+          Maximum time (in seconds) during which no pieces are received by the DataStream job
+          that is used to consider a download as interrupted.
+
+          See HKDSCtx_downloadTimeoutHook function.
+
+      hkds_retry_timeout:
+        type: U16
+        default: 750
+        doc: |
+          Time (in milliseconds) during which piece sending attempts are suppressed after an
+          unsuccessfull attempt (by either the OBC or COM).
+
+          See HKDSCtx_retryTimeoutHook function.
+
+      rdp_timeout:
+        type: U16
+        default: 2000
+        doc: |
+          Maximum time (in milliseconds) during which no RDP ACKs may be received.
+
+      hk_mon_active:
+        type: U8
+        enum: Bool
+        default: 0
+        doc: |
+          If true (1), the OBC monitors the other subsystems' health and toggles them
+          in accordance with SCMode.
+
+      hk_mon_liveliness_period:
+        type: U32
+        default: 10000
+        doc: |
+          Time between liveliness checks of other subsystems (in miliseconds).
+          Liveliness checks are done through pings.
+
+          0 means disabled.
+
+      hk_mon_liveliness_timeout:
+        type: U32
+        default: 60000
+        doc: |
+          Time (in milliseconds) since the last received heartbeat (last liveliness
+          check that was answered).
+          If this timeout is exceeded, the SS is marked as unresponsive.
+
+          0 means disabled.
+
+      hk_mon_liveliness_transient_period:
+        type: U32
+        default: 1000
+        doc: |
+          Time between liveliness checks of other subsystems (in miliseconds), when the
+          SS is in a transient state (BOOTING, SHUTINGDOWN).
+          Liveliness checks are done through pings.
+
+          0 means disabled.
+
+      hk_mon_liveliness_transient_timeout:
+        type: U32
+        default: 3100
+        doc: |
+          Time (in milliseconds) since the last received heartbeat (last liveliness
+          check that was answered), when the SS is in a transient state
+          (BOOTING, SHUTINGDOWN).
+          If this timeout is exceeded, the SS is marked as unresponsive.
+
+          0 means disabled.
+
+      hk_mon_reset_backoff:
+        type: U32
+        default: 0
+        doc: |
+          Time between reset attempts for unresponsive subsystems (in miliseconds).
+          If 0, the normal linearly increasing time based on number of attempts is used (see docs).
+
+      hk_mon_mode_ttc:
+        type: U8
+        enum: SSMode
+        default: 'ON'
+        doc: |
+          The monotorization mode of the TTC subsystem.
+          See SSMode enum documentation.
+
+      hk_mon_mode_com:
+        type: U8
+        enum: SSMode
+        default: 'ON_IF_NORMAL'
+        doc: |
+          The monotorization mode of the COM subsystem.
+          See SSMode enum documentation.
+
+      hk_mon_mode_eps:
+        type: U8
+        enum: SSMode
+        default: 'ON'
+        doc: |
+          The monotorization mode of the EPS subsystem.
+          See SSMode enum documentation.
+
+      hk_mon_mode_pl:
+        type: U8
+        enum: SSMode
+        default: 'ON_IF_NORMAL'
+        doc: |
+          The monotorization mode of the PL subsystem.
+          See SSMode enum documentation.
+
+      wdt_eps_pet_period:
+        type: U16
+        default: 0
+        doc: |
+          The period (in seconds) for petting the pseudo-watchdog in the EPS.
+          0 means disabled.
+
+      comms_sc_reset_timeout:
+        type: U16
+        default: 0
+        doc: |
+          Period of time (in minutes) during which the OBC may have no communications
+          with the GS without rebooting the SC. More specifically, when there are no
+          pets from the GS (using the OBC INCP command gs_pet) for the amount of time
+          specified in this config, the OBC rebots the SC.
+
+          Suppressed in Init mode.
+
+          0 means disabled.
+
+      # timer_coms_boot_timeout:
+      #   type: U16
+      #   default: 3600 # 1hr
+      #   doc: |
+      #     The period (in seconds) after the OBC boots up in which the timer_coms_timeout
+      #     is suppressed. This is intended to prevent a live-lock where the OBC
+      #     is constantly rebooting.
+
+      comms_factory_reset_timeout:
+        type: U16
+        default: 0
+        doc: |
+          Period of time (in minutes) during which the OBC may have no communications
+          with the GS without performing a factory reset. More specifically, when there are no
+          pets from the GS (using the OBC INCP command gs_pet) for the amount of time
+          specified in this config, the OBC perfroms a factory reset to itself.
+
+          Note that a factory reset deletes persistent storage, including logs, reports,
+          configs and ADCS updates. Configs will go back to their default values.
+
+          Suppressed in Init mode.
+
+          0 means disabled.
+
+      comms_ttc_reset_timeout:
+        type: U16
+        default: 0
+        doc: |
+          Period of time (in minutes) during which the OBC may have no communications
+          with the GS without performing a reboot to the TTC SS. More specifically,
+          when there are no pets from the GS (using the OBC INCP command gs_pet) for
+          the amount of time specified in this config, the OBC perfroms a reboot on the
+          TTC SS.
+
+          This functionality is a workaround which was created due to TTC bug that caused
+          the TTC to be mute and/or deaf to all communications. This is something that was
+          easily fixed with a reboot or config sync to the TTC SS.
+
+          Suppressed in Init mode.
+
+          0 means disabled.
+
+          NOTE This timeout should be greater than the timer_ttc_sync_timeout.
+
+      comms_ttc_sync_timeout:
+        type: U16
+        default: 0
+        doc: |
+          Period of time (in minutes) during which the OBC may have no communications
+          with the GS without performing a configs sync to the TTC SS. More specifically,
+          when there are no pets from the GS (using the OBC INCP command gs_pet) for
+          the amount of time specified in this config, the OBC perfroms a config sync on the
+          TTC SS.
+
+          This functionality is a workaround which was created due to TTC bug that caused
+          the TTC to be mute and/or deaf to all communications. This is something that was
+          easily fixed with a reboot or config sync to the TTC SS.
+
+          Suppressed in Init mode.
+
+          0 means disabled.
+
+          NOTE This timeout should be smaller than the timer_ttc_reboot_timeout.
+
+      scm_init2safe_cold_timeout:
+        type: U16
+        default: 10
+        doc: |
+          Time (in seconds) that will take for the OBC to transtion out of INIT
+          mode, in cold boot (first boot), if the detumbling is done.
+
+          To fly, should be 2700 (i.e. 45 min).
+          0 means disabled (i.e. transition will be performed ASAP if the SC is detumbled).
+
+      scm_init2safe_warm_timeout:
+        type: U16
+        default: 10
+        doc: |
+          Time (in seconds) that will take for the OBC to transtion out of Init
+          mode in a warm boot. A boot is considered to be warm when there has been a
+          previous boot that transitioned to Safe mode.
+
+          This is useful for testing since it enables testing in Init mode.
+          Otherwise the OBC would transition into safe mode too fast.
+          Additionally, for flight, the first boot (cold boot) HAS to wait
+          longer to change to Safe mode, however the following boots don't have to.
+
+          For flight should be a small number (or 0).
+          0 means disabled (i.e. transition will be performed ASAP if the SC is detumbled).
+
+      scm_init2safe_detumble_timeout:
+        type: U16
+        default: 10
+        doc: |
+          Time (in seconds) that will take for the OBC to transition out of INIT
+          even if detumbling is not done.
+
+          This timeout is menat to be used when the SC couldn't be properly detumbled. Even when
+          is these cases, it's preferable to transition to Safe eventually than stay in Init mode.
+          Thus, this timeout should be bigger than the scm_init2safe_cold_timeout
+          and scm_init2safe_warm_timeout timeouts.
+
+          To fly, should be 5400 seconds (i.e. 90 mins).
+          0 means disabled (i.e. transition will be performed ASAP, even if the SC is not detumbled).
+
+      scm_safe2normal_timeout:
+        type: U8
+        default: 0
+        doc: |
+          Time (in seconds) that will take for the OBC to transtion AUTOMATICALLY
+          from SAFE to NORMAL.
+          0 means disabled. Any positive number is the timeout in seconds.
+
+          Intended for development purposes only!
+          To fly, should be -1.
+
+      scm_safe2normal_batcharge:
+        type: U8
+        default: 0
+        doc: |
+          Percentage of battery charge level which must be met for a change from safe
+          to normal mode to be allowed.
+
+          If 0, then any percentege is allowed and thus the level is not requested from the EPS to be checked
+
+      scm_safe2normal_check_status_com:
+        type: U8
+        default: 1
+        enum: Bool
+        doc: |
+          When transitioning to NORMAL the COM should be ON. Thus, this is
+          checking in the transition routine unless this config is False (i.e.
+          0)
+
+      scm_safe2normal_check_status_pl:
+        type: U8
+        default: 1
+        enum: Bool
+        doc: |
+          Like scm_safe2normal_check_status_com but for PL
+
+      scm_normal2safe_batcharge:
+        type: U8
+        default: 0
+        doc: |
+          Percentage of battery charge level at which the spacecraft changes from normal
+          to safe mode.
+
+      scm_deploy_send_period:
+        type: U8
+        default: 0
+        doc: |
+          Time (in seconds) between antenna deployment command sends from the OBC to the TTC.
+          0 is disabled (no deployment command is ever sent).
+
+      scm_batcharge_check_period:
+        type: U16
+        default: 0
+        doc: |
+          Time (in seconds) between battery charge level checks for for transition into SAFE mode due to low power.
+          0 is disabled.
+
+      scm_modecheck_period:
+        type: U16
+        default: 0
+        doc: |
+          Time (in seconds) between hk_scmode checks of other subsystems.
+
+          0 is disabled.
+
+      scm_inter_ss_reboot_error_timeout:
+        type: U16
+        default: 0
+        doc: |
+          When in normal mode if the SSs reboot more than once and the time between
+          boots is very small (i.e. smaller than this config's value) then a transition
+          into Safe is performed, to avoid frequent reboots.
+          If there was a reboot but it is either the first or some
+          time has passed since the last boot, the OBC doesn't transition to Safe.
+
+          If 0, then any reboot in Normal mode triggers a transition to Safe mode.
+
+          Note that, this timer is global i.e. if two different SSs reboot ans the
+          time between the reboots is smaller than this config's value, then a
+          transition to Safe is also performed.
+
+          Time is in seconds.
+
+      scm_unresponsive_timeout:
+        type: U16
+        default: 0
+        doc: |
+          If a SS stays unresponsive for longer than this timeout then a transition into
+          Safe mode is triggered.
+
+          0 means disabled.
+
+          Time is in seconds.
+
+      adcs_task_cycle_period:
+        type: U16
+        default: 1000
+        doc: Period of one cycle of the ADCS task in miliseconds (equal for all the states)
+
+      adcs_task_min_sleep_after_cycle:
+        type: U8
+        default: 100
+        doc: Ideal amount of sleep at the end of each control cycle (in miliseconds)
+
+      adcs_task_min_sleep_before_sens:
+        type: U8
+        default: 50
+        doc: Minimum amount of sleep at the start of the cycle before sensing, to avoid magnetorquer-magnetometer interference (in miliseconds)
+
+      adcs_task_estimation_instant:
+        type: U16
+        default: 200
+        doc: Instant of time (in miliseconds) after the beggining of the cycle in which the estimations should be valid
+
+      adcs_task_actuation_instant:
+        type: U16
+        default: 300
+        doc: Instant of time (in miliseconds) after the beggining of the cycle in which the actuation should start
+
+      adcs_mag_estimation_model_degree:
+        type: U8
+        default: 3
+        doc: Degree (=order) of WMM (World Magnetic Model) expansion into spherical harmonic functions
+
+      adcs_sat_pos_max_int_step:
+        type: U8
+        default: 12
+        doc: The maximum step (in 10^-1 seconds) that an instance of sat. position integration may have. Integration of larger timespans must be divided into smaller integrations with individual time steps lower or equal to this value
+
+      adcs_sat_pos_update_timeout:
+        type: U8
+        default: 10
+        doc: |
+          When a new update is fetched from the OBC's pstate by the ADCS task, its timestamp may be too old for sat position integration (the error will be too big).
+          This timeout defines (in 10^1 seconds) how old is too old in this situation.
+
+      adcs_sun_pos_max_int_step:
+        type: U8
+        default: 50
+        doc: The maximum step (in 10^-1 seconds) that an instance of sun position integration may have. Integration of larger timespans must be divided into smaller integrations with individual time steps lower or equal to this value
+
+      adcs_sun_pos_update_timeout:
+        type: U8
+        default: 50
+        doc: Same as adcs_sat_pos_update_timeout but for sun updates.
+
+      adcs_max_ints_per_cycle:
+        type: U8
+        default: 2
+        doc: Maximum number of individual integrations for both sat. and sun positions that can be performed in one single control cycle
+
+      adcs_fetch_update_timeout:
+        type: U8
+        default: 10
+        doc: |
+          Minimum duration (in minutes) betweeen fetches of new updates from OBC's persistant memory.
+          This config is applied to both sat and sun updates.
+
+      adcs_attitude_est_mag_gain:
+        type: U16
+        default: 1000
+        doc: gain of the estimator's static correction component based on the magnetic field (multiplied by 1e3)
+
+      adcs_attitude_est_sun_gain:
+        type: U16
+        default: 100
+        doc: gain of the estimator's static correction component based on the sun vector (multiplied by 1e3)
+
+      adcs_attitude_est_bias_gain:
+        type: U16
+        default: 100
+        doc: gain of the estimator's bias correction  (multiplied by 1e3)
+
+      adcs_attitude_est_total_gain:
+        type: U16
+        default: 700
+        doc: gain of the estimator's static correction (multiplied by 1e3)
+
+      adcs_attitude_est_samp_period:
+        type: U16
+        default: 1000
+        doc: sampling period, in ms, of the attitude estimation filter. This should normally be equal to the control period
+
+      adcs_control_detum_gain:
+        type: U16
+        default: 3000
+        doc: gain of the bdot detumbling controller (multipled by 1e8)
+
+      adcs_control_point_rotation_gain:
+        type: U16
+        default: 1000
+        doc: gain of the pointing controller correspondent to the actuation component that attempts to change the direction of the angular velocity (multipled by 1e9)
+
+      adcs_control_point_direct_gain:
+        type: U16
+        default: 1000
+        doc: gain of the pointing controller correspondent to the actuation component that acts on the opposite direction of the pointing error (multipled by 1e9)
+
+      adcs_control_point_velocity_gain:
+        type: U16
+        default: 1000
+        doc: gain of the pointing controller correspondent to the actuation component that attempts to reduce the total angular velocity (multipled by 1e9)
+
+      adcs_stm_detumbling_config:
+        type: U8
+        default: 5
+        doc: |
+          A bitfield specifying in which SC mode detumbling state should be run. 
+          MSB is Normal mode and LSB is Init.
+          By default Detumbling state should be enabled for Init and Normal states, hence
+          101 = 5.
+
+      adcs_stm_pointing_config:
+        type: U8
+        default: 4
+        doc: |
+          A bitfield specifying in which SC mode pointing state should be run. 
+          MSB is Normal mode and LSB is Init.
+          By default Pointing state should be enabled only for Normal state, hence
+          100 = 4.
+
+      adcs_stm_pointing_threshold:
+        type: U8
+        default: 20
+        doc: Threshold of angular velocity magnitude below which the state should change to pointing (in 10^-1 deg/s) when in Pointing mode.
+
+      adcs_stm_detumbling_threshold:
+        type: U8
+        default: 50
+        doc: Threshold of angular velocity magnitude above which the state should change to detumbling (in 10^-1 deg/s) when in Pointing mode.
+
+      adcs_stm_detumbling_finished:
+        type: U8
+        default: 50
+        doc: Threshold of angular velocity magnitude below which detumbling is externally considered as finished for the transition INIT -> SAFE (in 10^-1 deg/s)
+
+      adcs_stm_force_state:
+        type: U8
+        enum: ADCSState
+        default: 0
+        doc: |
+          Force ADCS state machine to a given ADCS state according to
+          ADCSState enum values.
+          Since OBC doesn't allow ADCS state to be forced to ADCSState_INIT,
+          ADCSState=0, which is ADCSState_INIT is used as disabled (i.e. no forced
+          ADCS state).
+
+      adcs_stm_mtq_actuation_config:
+        type: U8
+        default: 0
+        enum: Bool
+        doc: |
+          Whether magnetorquers should be actuated with static values set by configs:
+            - adcs_mtq_static_dutycycle_x
+            - adcs_mtq_static_dutycycle_y
+            - adcs_mtq_static_dutycycle_z
+          
+          If true use static values (passive control), otherwise use ADCS computed 
+          dutycycles (active control).
+
+      adcs_mtq_static_dutycycle_x:
+        type: I16
+        default: 0
+        doc: |
+          Magnetorquer static dutycycle's X component.
+          This config is meant to create a permanent dipole replacing ADCS computed dutycyle
+          values (active control) with static ones (passive control).
+          
+          Config adcs_stm_mtq_actuation_config controls whther this value is used.
+
+          Value is a percentage (0 to 1) multiplied by 10^4. 
+          NOTE Value may be negative in order to actuate the magnetorquer in the opposite direction.
+
+      adcs_mtq_static_dutycycle_y:
+        type: I16
+        default: 0
+        doc: |
+          See description for config adcs_mtq_static_dutycycle_x.
+      
+      adcs_mtq_static_dutycycle_z:
+        type: I16
+        default: 0
+        doc: |
+          See description for config adcs_mtq_static_dutycycle_x.
+      
+      radio_rdp_block_time:
+        type: U16
+        default: 5000
+        doc: |
+          Number of miliseconds a msg which is to be sent with RDP should be
+          kept waiting until the TX window clears
+
+      radio_lpl_on_start:
+        type: U8
+        enum: Bool
+        default: 0
+        doc: |
+          The state of the LPL (Low Power Listening) that that OBC sets when the TTC is configured on
+          boot (i.e. the TTC 1st global configuration on initiation)
+
+      radio_param_change_timeout:
+        type: U16
+        default: 1000
+        doc: Time in msecs for the ttcconf operation changes
+
+      radio_reboot_check_period:
+        type: U16
+        default: 30
+        doc: |
+          Time (in seconds) between checks of TTC's uptime via the TOP protocol using the TOPOpcode_UPTIME
+          opcode. If the TTC's uptime has been reste, the ttc config parameters need to be syncronized.
+
+      radio_mode_control:
+        type: U8
+        enum: TTCModeControl
+        default: 0
+        doc: How the TTC mode is controlled. Either normally or force to either safe/normal. (See TTCModeControl)
+
+      radio_modulation_fallback_timeout:
+        type: U16
+        default: 900 # 15 min
+        doc: Timer (in seconds) for radio fallback to AFSK modulation. Disabled on 0
+
+      radio_send_max_attempts:
+        type: U8
+        default: 4
+        doc: Maximum number of retries for sending a msg before dropping it
+
+      radio_send_relief_max_timeout:
+        type: U16
+        default: 2500
+        doc: |
+          Maximum wait time (in milliseconds) between send attempts due to relief.
+
+      radio_send_relief_per_attemp_timeout:
+        type: U16
+        default: 1000
+        doc: |
+          Wait time (in milliseconds) between send attempts due to relief.
+
+      <<: *_ifw_configs
+
+      test_top_ax25_only_mode:
+        type: U8
+        default: 0
+        doc: |
+          If not zero, then frames received from the TTC are logged (using logD)
+          instead of beinged decoded by the normal protocol stack (CSP, RDP and
+          INCP).
+
+    enums:
+      SStatus:
+        cgen: True
+        enum:
+          'OFF': 0
+          'BOOTING': 1
+          'UNRESPONSIVE': 2
+          'ON': 3
+          'SHUTINGDOWN': 4
+          'IGNORE': 5
+
+      SSMode:
+        cgen: True
+        enum:
+          'ON': 0 # Always tries to keep the SS on.
+          'ON_IF_INIT_OR_NORMAL': 5 # Tries to keep the SS on if in normal or init modes.
+          'ON_IF_NORMAL': 1 # Tries to keep the SS on if in normal mode.
+          'OFF': 2 # Keeps the SS off for all modes.
+          'MONITOR': 3 # Tracks responsiveness of a SS but doesn't perform resets.
+          'IGNORE': 4 # The SS is ignored by the OBC.
+
+      ForwardMode:
+        cgen: True
+        enum:
+          'ON': 0 # The OBC stores and always forwads the collected telemetry data to another SS (specified in config hk_tm_forward_addr).
+          'ON_IF_NORMAL': 1 # The OBC stores the collected telemetry data and oly forwards it to another SS in Normal mode (specified in config hk_tm_forward_addr).
+          'OFF': 2 # The OBC stores the collected telemetry data but never forwards it to another SS.
+
+      TTConfOperation:
+        cgen: True
+        enum:
+          'SRC': 0
+          'DST': 1
+          'LPL': 2
+          'MODE': 3
+          'MODULATION': 4
+          'NONE': 5
+          '_NUM': 6
+
+      TTCModeControl:
+        cgen: True
+        enum:
+          'API': 0 # i.e. regular mode were calls to serviceUART_ttconfChangeMode() change it as indented
+          'FORCE_SAFE': 1
+          'FORCE_NORMAL': 2
+
+      ADCSState:
+        cgen: True
+        enum:
+          'INIT': 0
+          'OFF': 1
+          'IDLE': 2
+          'DETUMBLING': 3
+          'POINTING': 4
+          'FAIL': 5
+          'HITL': 6
+
+      ADCSFn:
+        cgen: True
+        enum:
+          'NONE': 0
+          'ned2ecef': 1
+          'eci2ecef': 2
+          'ecef2eci': 3
+          'ecef2sph': 4
+          'earthECIE_2_sunECI': 5
+          'position_determination_Sun': 6
+          'quaternion_rotation': 7
+          'rotation_matrix_to_quaternion': 8
+          'triad': 9
+          'determine_sun_direction': 10
+          'compute_attitude_estimation': 11
+          'compute_bdot_control': 12
+          'compute_pointing_control': 13
+          'position_determination': 14
+          'MagFieldComputation': 15
+
+
+  TTC:
+    addr: 2
+
+    data:
+      ax25_tx_bytes:         { type: "U32",   doc: "Number of bytes encoded with AX25." }
+      ax25_tx_msgs:          { type: "U32",   doc: "Number of messages encoded with AX25." }
+      ax25_tx_errs:          { type: "U32",   doc: "Number of errors (messages) in AX25 encoding." }
+      ax25_rx_bytes:         { type: "U32",   doc: "Number of bytes decoded with AX25." }
+      ax25_rx_msgs:          { type: "U32",   doc: "Number of messages decoded with AX25." }
+      ax25_rx_errs:          { type: "U32",   doc: "Number of errors (messages) in AX25 decoding." }
+      ax25_remote_cs:        { type: "VDATA", doc: "Callsign of the last remote received msg (only changes if CS changes)." }
+
+      uart_rx_bytes:         { type: "U32",   doc: "Number of bytes received on the UART (OBC) interface." }
+      uart_tx_bytes:         { type: "U32",   doc: "Number of bytes transmitted on the UART (OBC) interface." }
+
+      spi_bytes:             { type: "U32",   doc: "Number of bytes transmitted on the SPI (COM) interface." }
+
+      modem_tx_bytes:        { type: "U32",  doc:  "Number of bytes sent to modulation." }
+      modem_tx_msgs:         { type: "U32",  doc:  "Number of messages sent to modulation." }
+      modem_rx_bytes:        { type: "U32",  doc:  "Number of bytes received from demodulation." }
+      modem_rx_msgs:         { type: "U32",  doc:  "Number of messages received from demodulation." }
+
+      rssi_agc_inst:         { type: "U16",   doc: "RSSI at codec level (instantaneous value)." }
+      rssi_agc_last:         { type: "U16",   doc: "RSSI at codec level (last msg)."}
+      rssi_mixer:            { type: "U16",   doc: "RSSI at mixer level." }
+
+      gain_tx_if_mixer:      { type: "U16",   doc: "Gain of the TX IF mixer." }
+      synth_lock_rx:         { type: "U8",    doc: "Lock status of the TX synthesizer. 0 is unlocked, 1 is locked." }
+      synth_lock_tx:         { type: "U8",    doc: "Lock status of the RX synthesizer. 0 is unlocked, 1 is locked." }
+
+      current_tx:            { type: "U16",   doc: "Current consumption of TX (without PA)." }
+      current_tx_pa:         { type: "U16",   doc: "Current consumption of TX (only PA)." }
+      current_rx:            { type: "U16",   doc: "Current consumption of RX." }
+
+      antenna_switch_status: { type: "U8",    doc: "Comms data and beacon share the same channel. Whether the antenna is currently being used for comms (0) or for beacon (1)." }
+
+      error_status:          { type: "U16",   doc: "TTC Error status bit field (most significant bit first): UARTError; SPIError; I2CError; ModemError; CodecError; I2CMuxError; TXSynthError; RXSynthError; TXMixerError; TXDACError; RXDACError; FlashError; FirmwareError; Dummy1; Dummy2; Dummy3." }
+      firmware_version:      { type: "U32",   doc: "Installed Firmware Version."}
+      hardware_version:      { type: "U8",    doc: "Modem Hardware Version of this board."}
+      board_id:              { type: "U8",    doc: "Modem Board ID." }
+      carrier_sense:         { type: "U8",    doc: "If TTC RX has carrier detected."}
+      deployed:              { type: "U8",    doc: "Bitfield of which ISIS switches are on/off. 1 means on. 0 means off. Since there are 4 switches, only the variable's 4 LSBs (bit 0 to bit 3) are used. The antenna is fully deployed when all of the 4 swicthes are activated, i.e. deployed = 0x0F = 15. Bit 3: ANT2 (Y-) status. Bit 2: ANT1 (X+) status. Bit 1: ANT4 (Y+) status. Bit 0: ANT3 (X-) status."}
+      was_deploy_sent:       { type: "U8",    doc: "Debug var which tells us if a deploy cmd to the TTC's antenna has been issued. Deploy cmds to the TTC antenna can only be sent via the TTC (since it's the only SS with access to the antenna), however they can be issue by other SSs. The variable is a bitfield in which diffrent bits corresponds to diffrent possible scenarios in which the TTC sends a deployment cmd to the antenna. The 4 different scenarios are: Deploy cmd was received via INCP (0000 0001); Deploy cmd was received via UART (0000 0010); Deploy cmd was received via HPC (0000 0100); The Init time in the TTC expired and a deploy cmd was issued by the TTC itself (0000 1000). The 4 MSBs are not used."}
+
+      synth_relock_rx_cnt:   { type: "U16",   doc: "RX Synth relock counts." }
+      synth_relock_tx_cnt:   { type: "U16",   doc: "TX Synth relock counts." }
+
+      temp_adm:              { type: "U16",    doc: "ISIS antenna temperature value from the 10-bit ADC, hence may vary between 0 and 1023. To convert to Celcius please refer to the ISIS antenna user manual. When value is 1, may mean error." }
+
+
+    reports:
+      tm_short:
+        members:
+          - ax25_rx_bytes
+          - ax25_rx_msgs
+          - ax25_tx_bytes
+          - ax25_tx_msgs
+          - current_rx
+          - current_tx
+          - rssi_agc_inst
+          - rssi_agc_last
+
+      tm_periodic:
+        members:
+          - ax25_rx_bytes
+          - ax25_rx_msgs
+          - ax25_tx_bytes
+          - ax25_tx_msgs
+          - current_rx
+          - current_tx
+          - rssi_agc_inst
+          - rssi_agc_last
+          - error_status
+          - time_boot
+
+      flight_tm:
+        members:
+          - rssi_agc_inst
+          - rssi_agc_last
+          - rssi_mixer
+
+      flight_broadcast:
+        members:
+          - time_boot
+          - hk_scmode
+          - ax25_tx_msgs
+          - ax25_rx_msgs
+          - antenna_switch_status
+          - error_status
+          - carrier_sense
+          - temp_adm
+
+      flight_pass:
+        members:
+          - time_boot
+          - hk_scmode
+          - deployed
+          - error_status
+
+
+    commands:
+      0:
+        name: upd8_start
+        doc: ''
+        args:
+          size:
+            doc: 'in bytes'
+            type: U32
+          nblocks:
+            doc: ''
+            type: U16
+        returns:
+          ok:
+            doc: ''
+            type: U8
+
+      1:
+        name: upd8_transfer_block
+        doc: ''
+        args:
+          sn:
+            doc: 'sequence number of the block'
+            type: U16
+          size:
+            doc: 'in bytes'
+            type: U8
+          data:
+            doc: 'TODO'
+            type: VDATA
+        returns:
+          sn:
+            doc: 'sequence number of the block (equal passed as arg)'
+            type: U16
+          ok:
+            doc: ''
+            type: U8
+
+      2:
+        name: upd8_commit
+        doc: ''
+        args:
+          checksum:
+            doc: ''
+            type: U32
+        returns:
+          size:
+            doc: 'in bytes'
+            type: U32
+          nblocks:
+            doc: ''
+            type: U16
+          ok:
+            doc: ''
+            type: U8
+
+      add2:
+        doc: sums 2 numbers
+        args:
+          a:
+            doc: ''
+            type: U16
+          b:
+            doc: ''
+            type: U16
+        returns:
+          result:
+            doc: ''
+            type: U16
+
+      reboot:
+        doc: Reboots the system
+        args: {}
+        returns: {}
+
+      deploy:
+        doc: Deploy antennas
+        args: {}
+        returns:
+          err:
+            doc: ''
+            type: U8
+
+      set_lpl:
+        doc: "Actives or deactives the TTC's low power listening mode"
+        args:
+          active:
+            doc: ''
+            enum: Bool
+            type: U8
+        returns:
+          err:
+            doc: ''
+            type: U8
+
+      pcmd_set_pass:
+        doc: |
+          Changes the password of the priority commands.
+
+          To disabled a password use '0xFFFFFFFFFFFFFFFF' value
+
+        args:
+          id:
+            doc: '0 or 1, for either password'
+            type: U8
+          password:
+            type: U64
+        returns:
+          err:
+            doc: '0:OK, 1:error'
+            type: U8
+
+    configs:
+      safe_modulation:
+        type: U8
+        default: 0
+        enum: TTCModulation
+        doc: |
+          Modulation used, according to TTCModulation enum, on downlink data
+          (transmitted by the TTC) in Safe mode.
+
+      safe_demodulation:
+        type: U8
+        default: 0
+        enum: TTCModulation
+        doc: |
+          Modulation used, according to TTCModulation enum, on uplink data
+          (received by the TTC) in Safe mode.
+
+      normal_modulation:
+        type: U8
+        default: 0
+        enum: TTCModulation
+        doc: |
+          Modulation used, according to TTCModulation enum, on downlink data
+          (transmitted by the TTC) in Normal mode.
+
+      normal_demodulation:
+        type: U8
+        default: 0
+        enum: TTCModulation
+        doc: |
+          Modulation used, according to TTCModulation enum, on uplink data
+          (received by the TTC) in Safe mode.
+
+      safe_switch:
+        type: U8
+        default: 0
+        doc: "Which subsystem to relay data from the antenna (0-OBC, 1-COM)"
+
+      normal_switch:
+        type: U8
+        default: 1
+        doc: "Which subsystem to relay data from the antenna (0-OBC, 1-COM)"
+
+      global:
+        type: U8
+        default: 0
+        doc: |
+          All of the TTC's transmissions are done through the same antenna.
+          This config toggles all the transmissions done by the antenna, thus affecting the
+          beacon and all the other transmitted information.
+          0 - On
+          1 - Off
+
+      beacon:
+        type: U8
+        default: 0
+        doc: |
+          Sets the beacon (without affecting the rest of the TTC's trasmitted information)
+          to be on or off.
+          0 - On
+          1 - Off
+
+      tx:
+        type: U8
+        default: 0
+        doc: |
+          Sets the TTC's transmitted informaation (excluding the beaacon) to be on or off.
+          0 - On
+          1 - Off
+
+      ldl:
+        type: U8
+        default: 0
+        doc: "Local Digital Loop (0-OFF, 1-ON)"
+
+      lal:
+        type: U8
+        default: 0
+        doc: "Local Analog Loop (0-OFF, 1-ON)"
+
+      rdl:
+        type: U8
+        default: 0
+        doc: "Remote Digital Loop (0-OFF, 1-ON)"
+
+      mixer_tx_offset_i:
+        type: U8
+        default: 0
+        doc: "Tx mixer offset (parameter I)"
+
+      mixer_tx_offset_q:
+        type: U8
+        default: 0
+        doc: "Tx mixer offset (parameter q)"
+
+      mixer_tx_gain:
+        type: U8
+        default: 0
+        doc: "Tx mixer gain"
+
+      pool_period_rx:
+        type: U16
+        default: 0
+        doc: "Pool periode (ms) of RX to check for RSSI, RX is not always on"
+
+      frequency_deviation:
+        type: U16
+        default: 3000
+        doc: "Frequency deviation of AFSK-FM"
+
+      debug_test_frame:
+        type: U8
+        default: 0
+        doc: "Periodically sends a test frame. (0:off, 1: continuous random, 2: continuous 0x7E, 3: bytearray of len 100 (not AX25), 4: AX25Frame with payload)"
+
+      debug_ax25_filter_fcs:
+        type: U8
+        default: 1
+        doc: "0:off, 1:on"
+
+      debug_ax25_filter_src:
+        type: U8
+        default: 0
+        doc: "0:off, 1:on"
+
+      debug_ax25_filter_dst:
+        type: U8
+        default: 0
+        doc: "0:off, 1:on"
+
+      debug_ax25_filter_pid:
+        type: U8
+        default: 0
+        doc: "0:off, 1:on"
+
+      debug_ax25_filter_ctrl:
+        type: U8
+        default: 0
+        doc: "0:off, 1:on"
+
+      debug_uart_raw:
+        type: U8
+        default: 0
+        doc: "0:off, 1:on"
+
+      frequency_deviation_FSK:
+        type: U16
+        default: 3000
+        doc: "Frequency deviation of FSK (G3RUH)"
+
+      preamble_length:
+        type: U8
+        default: 20
+        doc: "Number of Preamble Symbols sent before AX25 frame"
+
+      preamble_symbol:
+        type: U8
+        default: 126
+        doc: "The Preamble Symbol Used"
+
+      posamble_length:
+        type: U8
+        default: 5
+        doc: "Number of Posamble Symbols sent after AX25 frame"
+
+      posamble_symbol:
+        type: U8
+        default: 126
+        doc: "The Posamble Symbol Used"
+
+      lpl_suppression_timeout:
+        type: U16
+        default: 30000
+        doc: |
+          Time in msecs that the Low Power Listening is suppressed after
+          successfully receiving some valid communication
+
+
+  COM:
+    addr: 3
+
+    data:
+      spi_tx_bytes:    { type: "U32",   doc: "Total number of bytes sent to the SPI bus (communication interface with the TTC)." }
+      spi_rx_bytes:    { type: "U32",   doc: "Total number of bytes received in the SPI bus (communication interface with the TTC)." }
+      ax25_tx_bytes:   { type: "U32",   doc: "Number of bytes encoded with AX25." }
+      ax25_tx_msgs:    { type: "U32",   doc: "Number of messages encoded with AX25." }
+      ax25_tx_errs:    { type: "U32",   doc: "Number of errors (messages) in AX25 encoding." }
+      ax25_rx_bytes:   { type: "U32",   doc: "Number of bytes decoded with AX25." }
+      ax25_rx_msgs:    { type: "U32",   doc: "Number of messages decoded with AX25." }
+      ax25_rx_errs:    { type: "U32",   doc: "Number of errors (messages) in AX25 decoding." }
+      ax25_rx_flags:   { type: "U32",   doc: "Total number of flags received. A flag is a 0x7E byte which is used to wake the TTC SS from low-power listening." }
+      ax25_remote_cs:  { type: "VDATA", doc: "Callsign of the last remote received msg (only changes if CS changes)" }
+
+      csp_tx_msgs:     { type: "U32",   doc: "Number of radio messages sent with the CubeSat Protocol (CSP) layer." }
+      csp_tx_bytes:    { type: "U32",   doc: "Number of bytes worth of radio messages sent with the CubeSat Protocol (CSP) layer." }
+      csp_rx_msgs:     { type: "U32",   doc: "Number of radio messages received with the CubeSat Protocol (CSP) layer." }
+      csp_rx_bytes:    { type: "U32",   doc: "Number of bytes worth of radio messages received with the CubeSat Protocol (CSP) layer." }
+
+      <<: *_rdp_data
+
+      # DataWarehousing
+      dwh_tm_entries:   { type: "U32",  doc: "Total number of stored telemetry report entries." }
+      dwh_tm_bytes:     { type: "U32",  doc: "Total size in bytes of telemetry report entries. (including the file header with the ss, ts, and id)"  }
+      dwh_logs_entries: { type: "U32",  doc: "Total number of stored log messages." }
+      dwh_logs_bytes:   { type: "U32",  doc: "Total size of stored log messages." }
+      dwh_adsb_entries: { type: "U32",  doc: "Total number of stored adsb msgs." }
+      dwh_adsb_bytes:   { type: "U32",  doc: "Total size of stored adsb msg." }
+
+      dwh_write_files:  { type: "U32", doc:   "Total number of writen files." }
+      dwh_write_bytes:  { type: "U32", doc:   "Total size of written files (including DWH file header)." }
+
+      dwh_faults_frams: { type: "U8", doc:  "Number of FRAMs detected to be faulty or otherwise not working." }
+      dwh_faults_srams: { type: "U8", doc:  "Number of SRAMs detected to be faulty or otherwise not working." }
+      dwh_state_fram0:  { type: "U8", enum: "dwhBankState", doc: "State (according to the dwhBankState enum) of the first FRAM bank. A bank is made-up of 2 FRAM chips." }
+      dwh_state_fram1:  { type: "U8", enum: "dwhBankState", doc: "State (according to the dwhBankState enum) of the second FRAM bank. A bank is made-up of 2 FRAM chips." }
+      dwh_state_fram2:  { type: "U8", enum: "dwhBankState", doc: "State (according to the dwhBankState enum) of the third FRAM bank. A bank is made-up of 2 FRAM chips." }
+      dwh_state_fram3:  { type: "U8", enum: "dwhBankState", doc: "State (according to the dwhBankState enum) of the fourth FRAM bank. A bank is made-up of 2 FRAM chips." }
+      dwh_state_sram0:  { type: "U8", enum: "dwhBankState", doc: "State (according to the dwhBankState enum) of the first SRAM bank. A bank is made-up of 2 SRAM chips." }
+      dwh_state_sram1:  { type: "U8", enum: "dwhBankState", doc: "State (according to the dwhBankState enum) of the second SRAM bank. A bank is made-up of 2 SRAM chips." }
+      fram_current:     { type: "U16", doc: "Current being drawn by the FRAM chips (in mA)." }
+      sram_current:     { type: "U16", doc: "Current being drawn by the SRAM chips (in mA)." }
+
+      <<: *_ifw_data
+
+      test_str16:       { type: "S16", doc: "Returns string (for testing purposes)." }
+
+
+    reports:
+      spi:
+        members:
+          - spi_tx_bytes
+          - spi_rx_bytes
+
+      ax25:
+        members:
+          - ax25_tx_bytes
+          - ax25_tx_msgs
+          - ax25_tx_errs
+          - ax25_rx_bytes
+          - ax25_rx_msgs
+          - ax25_rx_errs
+          - ax25_rx_flags
+
+      csp:
+        members:
+          - csp_tx_msgs
+          - csp_tx_bytes
+          - csp_rx_msgs
+          - csp_rx_bytes
+
+      <<: *_rdp_reports
+
+      coms:
+        members:
+          - spi
+          - ax25
+          - csp
+          - rdp
+          - ss
+
+      dwh:
+        members:
+          - dwh_data
+          - dwh_banks
+
+      dwh_data:
+        members:
+          - dwh_tm_entries
+          - dwh_tm_bytes
+          - dwh_logs_entries
+          - dwh_logs_bytes
+          - dwh_adsb_entries
+          - dwh_adsb_bytes
+          - dwh_write_files
+          - dwh_write_bytes
+
+      dwh_banks:
+        members:
+          - dwh_state_fram0
+          - dwh_state_fram1
+          - dwh_state_fram2
+          - dwh_state_fram3
+          - dwh_state_sram0
+          - dwh_state_sram1
+
+      tm_long:
+        members:
+          - ax25_tx_msgs
+          - ax25_tx_bytes
+          - ax25_rx_msgs
+          - ax25_rx_bytes
+          - dwh_tm_entries
+          - dwh_logs_entries
+          - dwh_adsb_entries
+
+      tm_health:
+        members:
+          - time
+          - hk_scmode
+          - ifw
+
+      flight_broadcast:
+        members:
+          - time_boot
+          - hk_scmode
+          - ax25_tx_msgs
+          - ax25_rx_msgs
+
+      flight_pass:
+        members:
+          - time_boot
+          - hk_scmode
+          - dwh_faults_frams
+          - dwh_faults_srams
+
+      <<: *_ifw_reports
+
+    commands:
+      0:
+        name: masterReportStart
+        doc: Orders the COM to start preparing a new master Report for storage in the datawarehousing
+        args:
+          ts:
+            doc: 'The timestamp of the report'
+            type: U32
+        returns: {}
+      1:
+        name: masterReportFill
+        doc:
+        args:
+          ss:
+            doc: "Identifier of the subsystem being forwarded"
+            type: U8
+          id:
+            doc: "Identifier of the report being forwarded"
+            type: U8
+          report:
+            doc: "Report to fill"
+            type: VDATA
+        returns:
+          err:
+            doc: '0-OK, 1-Did not call Start 1st, 2-Unknown ss/id, 3-wrong size for ss/id pair'
+            type: U8
+      2:
+        name: masterReportCommit
+        doc: Finalizes the master report and stores it to persistent memory
+        args: {}
+        returns:
+          err:
+            doc: '0-ok, 1-Did not call Start 1st'
+            type: U8
+      3:
+        name: masterReportReset
+        doc: 'Completely resets the internal state of the master report handling'
+        args: {}
+        returns: {}
+
+      dwh_download:
+        doc: |
+          Starts the download procedure  of data (reports, logs or ADS-B messages) from the provided partition.
+          Specific partitions can specified or special ID for all reports, logs or mission data.
+        args:
+          partition:
+            type: U8
+            enum: dwhPartID
+            doc: |
+              COM DWH partition to start the download from.
+          filter_ts_start:
+            type: U32
+            doc: |
+              Only download data units with timestamp equal or greater than this value.
+              See HKDSCtx_start() for more details.
+          filter_ts_stop:
+            type: U32
+            doc: |
+              Only download data units with timestamp smaller than this value.
+              See HKDSCtx_start() for more details.
+        rets:
+          err:
+            doc: |
+              Error status:
+              0: Download started (ok)
+              1: Invalid partition
+              2: A download is already running
+              3: Unkown error
+            type: U8
+
+      dwh_download_stop:
+        doc: |
+          Stops a running download procedure (via DataStream).
+        args: {}
+        rets:
+          err:
+            doc: '0: ok'
+            type: U8
+
+      dwh_clear:
+        doc: |
+          Removes/clears all the data saved in a given COM partition. Specific partitions can specified or
+          special ID for all reports, logs or mission data.
+        args:
+          partition:
+            type: U8
+            enum: dwhPartID
+            doc: |
+              COM DWH partition to start the download from.
+        rets:
+          err:
+            type: U8
+            doc: |
+              Error status according to SFSError enum.
+
+      dwh_clear_all:
+        doc: |
+          Removes/clears all the data saved on all COM partitions.
+        args: {}
+        rets:
+          err:
+            type: U8
+            doc: |
+              Error status according to SFSError enum.
+
+      dwh_is_empty:
+        doc: Checks if the partition is empty or not
+        args:
+          partition:
+            doc: TODO
+            type: U8
+        rets:
+          status:
+            doc: '0:false, 1:true, 2:invalid part'
+            type: U8
+
+      dwh_part_info:
+        doc: Returns information of the given partition
+        args:
+          partition_id:
+            type: U8
+            enum: dwhPartID
+        rets:
+          err:
+            doc: '0:ok, 1:invalid part, 2:invalid part is group'
+            type: U8
+          addr:
+            doc: 'Partition start addr'
+            type: U32
+          size:
+            doc: 'Partition size in bytes'
+            type: U32
+          addr_body:
+            doc: 'Partition start addr (of data)'
+            type: U32
+          addr_body_end:
+            doc: 'Partition end addr (of data)'
+            type: U32
+          head:
+            doc: 'Partition head'
+            type: U32
+          tail:
+            doc: 'Partition tail'
+            type: U32
+
+      dwh_diagnose_frams:
+        doc: |
+          Execute a diagnostic on the FRAMS checking if their working and
+          marking them as fail if not
+        args: {}
+        rets:
+          fails:
+            doc: 'If positive, the number of banks in FAIL state.'
+            type: U8
+
+      dwh_diagnose_srams:
+        doc: |
+          Execute a diagnostic on the SRAMS checking if their working and
+          marking them as fail if not
+        args: {}
+        rets:
+          fails:
+            doc: 'If positive, the number of banks in FAIL state.'
+            type: U8
+
+      dwh_test_oc:
+        doc: |
+          Triggers a fake overcurrent detection for a given memory bank
+        args:
+          group:
+            doc: 'See dwhBankGroup_e'
+            type: U8
+        rets: {}
+      
+      dwh_get_bank_currents:
+        doc: |
+          Returns lastest sampled values by the ADC of the memory banks current sesnsors.
+          The values are returned in 0.1 mA.
+        args: {}
+        rets:
+          fram:
+            type: U16
+          sram:
+            type: U16
+
+      radio_send:
+        doc: 'Sends data to the Ground using the ServiceRadio'
+        args:
+          data:
+            doc: Data to Send
+            type: VDATA
+        returns:
+          err:
+            doc: 'SOCKERR_e'
+            type: U8
+
+
+      radio_send_ax25:
+        doc: 'Sends data to the Ground using the ServiceRadio with only ax25'
+        args:
+          data:
+            doc: Data to Send
+            type: VDATA
+        returns:
+          err:
+            doc: 'Success (0:sent, 1:invalid args, 2: serviceRadio_sendAX25() returned false)'
+            type: U8
+
+      radio_send_raw:
+        doc: 'Sends data to the Ground using the ServiceRadio but without any protocols (direct write to SPI)'
+        args:
+          data:
+            doc: Data to Send
+            type: VDATA
+        returns:
+          err:
+            doc: 'Success (0:sent, 1:invalid args, 2: serviceRadio_sendRaw() returned false)'
+            type: U8
+
+      radio_reset:
+        doc: 'Resets the state machine'
+        args: {}
+        returns: {}
+
+      <<: *_ifw_cmds
+
+    configs:
+      radio_tx_retries:
+        type: U8
+        default: 1
+        doc: |
+          Number of retries for sending frame to TTC. Retry is done after
+          timeout or error. Zero still means that the initial send is still performed
+
+      radio_spiwrite_attempts:
+        type: U8
+        default: 40
+        doc: |
+          Maximum number of attempts for sending data to TTC in _layer_bottom_on_send()
+
+      radio_spiwrite_timeout:
+        type: U16
+        default: 25
+        doc: |
+          Timeout (in ms) between attempts of sending data to TTC in _layer_bottom_on_send()
+
+      radio_remote_host_lag_timeout:
+        type: U16
+        default: 120
+        doc: |
+          Timeout (in secs) for using a remote host's AX25 callsign in dst
+          field of AX25 frames. See member 'remote_host_lag_timeout' in struct
+          'scsp_socket_t' of scsp.c for details.
+
+      radio_rdp_block_time:
+        type: U16
+        default: 5000
+        doc: |
+          Number of miliseconds a msg which is to be sent with RDP should be
+          kept waiting until the TX window clears
+
+      rdp_timeout:
+        type: U16
+        default: 2000
+        doc: 'Timeout for acks'
+
+      safe_relay:
+        type: U8
+        default: 0
+        doc: "In safe mode will relay msgs to/from the ground (0-no, 1-yes)"
+
+      normal_relay:
+        type: U8
+        default: 1
+        doc: "In normal mode will relay msgs to/from the ground (0-no, 1-yes)"
+
+      test_ax25_only_mode:
+        type: U8
+        default: 0
+        doc: |
+          If not zero, then frames received from the TTC are logged (using logD)
+          instead of beinged decoded by the normal protocol stack (CSP, RDP and
+          INCP).
+
+          If zero then it's disabled.
+
+      dwh_part_fram_reports_sz:
+        type: U32
+        default: 0x050000
+        doc: |
+          How much space (in bytes) is available in each working FRAM for the report storage.
+
+          The size is up to 1MB (0x100000). Internally, the dwh distributes the data over the 4 FRAMs (of 1MB each).
+
+          If zero then it's disabled.
+
+      dwh_part_fram_logs_sz:
+        type: U32
+        default: 0x050000
+        doc: |
+          How much space (in bytes) is available in each working FRAM for logs storage.
+
+          The size is up to 1MB (0x100000). Internally, the dwh distributes the data over the 4 FRAMs (of 1MB each).
+
+          If zero then it is disabled.
+
+      dwh_part_fram_adsb_sz:
+        type: U32
+        default: 0x000000
+        doc: |
+          How much space (in bytes) is available in each working FRAM for adsb message storage.
+
+          The size is up to 1MB (0x100000). Internally, the dwh distributes the data over the 4 FRAMs (of 1MB each).
+
+          If zero then it is disabled.
+
+      dwh_part_sram_reports_sz:
+        type: U32
+        default: 0x000000
+        doc: |
+          How much space (in bytes) is available in each working SRAM for reports storage.
+
+          The size is up to 8MB (0x800000). Internally, the dwh distributes the data over the 2 SRAMs (of 8MB each).
+
+          If zero then it is disabled.
+
+      dwh_part_sram_logs_sz:
+        type: U32
+        default: 0x000000
+        doc: |
+          How much space (in bytes) is available in each working SRAM for logs storage.
+
+          The size is up to 8MB (0x800000). Internally, the dwh distributes the data over the 2 SRAMs (of 8MB each).
+
+          If zero then it is disabled.
+
+      dwh_part_sram_adsb_sz:
+        type: U32
+        default: 0x800000
+        doc: |
+          How much space (in bytes) is available in each working SRAM for adsb message storage.
+
+          The size is up to 8MB (0x800000). Internally, the dwh distributes the data over the 2 SRAMs (of 8MB each).
+
+      dwh_save_mode:
+        type: U8
+        default: 'GROUP_COPY'
+        enum: 'dwhStoreMode'
+        doc: |
+          How the various data units will be saved over the various eanbeld partitions for a particular data type.
+          See dwhStoreMode enum's doc for information of available modes and dwh.hpp doxydocs for implementation details.
+
+      dwh_fram0_active:
+        type: U8
+        default: 1
+        doc: "Status of FRAM0 (1:ON, 2:OFF)"
+
+      dwh_fram1_active:
+        type: U8
+        default: 1
+        doc: "Status of FRAM1 (1:ON, 2:OFF)"
+
+      dwh_fram2_active:
+        type: U8
+        default: 1
+        doc: "Status of FRAM2 (1:ON, 2:OFF)"
+
+      dwh_fram3_active:
+        type: U8
+        default: 1
+        doc: "Status of FRAM3 (1:ON, 2:OFF)"
+
+      dwh_sram0_active:
+        type: U8
+        default: 1
+        doc: "Status of SRAM0 (1:ON, 2:OFF)"
+
+      dwh_sram1_active:
+        type: U8
+        default: 1
+        doc: "Status of SRAM1 (1:ON, 2:OFF)"
+
+      dwh_diagnostic_check_time:
+        type: U16
+        default: 25
+        doc: |
+          Time in msec which the DWH waits without OverCurrents before marking a
+          bank as OK during the diagnostic. The ADC whici is measure the current
+          checks every 10ms so it must be larger than that.
+
+      dwh_diagnostic_wait_timeout:
+        type: U32
+        default: 60_000
+        doc: |
+          Time in msecs which the DWH wiats in between automatic diangostics.
+          Commands diangostics have no such limitation
+
+          Note a timeout of zero means that the DWH module only performs a
+          single diagnostic right after detecting the OC. I.e. no periodic
+          checks to try and reenable the banks.
+
+      oc_frams_limit_inst:
+        type: U16
+        default: 32767
+        doc: 'The limit which triggers an immediate shutdown of the banks (maximum i16 value which corrresponds to ~3.2A)'
+
+      oc_frams_limit_avg:
+        type: U16
+        default: 32767
+        doc: 'The average limit which triggers a shutdown of the banks (maximum i16 value which corrresponds to ~3.2A)'
+
+      oc_frams_limit_window:
+        type: U8
+        default: 10
+        doc: 'Number of samples used to calculate the average'
+
+      oc_srams_limit_inst:
+        type: U16
+        default: 32767
+        doc: 'The limit which triggers an immediate shutdown of the banks (maximum i16 value which corrresponds to ~3.2A)'
+
+      oc_srams_limit_avg:
+        type: U16
+        default: 32767
+        doc: 'The average limit which triggers a shutdown of the banks (maximum i16 value which corrresponds to ~3.2A)'
+
+      oc_srams_limit_window:
+        type: U8
+        default: 10
+        doc: 'Number of samples used to calculate the average'
+
+      hkds_download_timeout:
+        type: U16
+        default: 120
+        doc: 'Timeout (in secs) Timeout to consider a download as interrupted. See HKDSCtx_downloadTimeoutHook'
+
+      hkds_retry_timeout:
+        type: U16
+        default: 750
+        doc: 'Timeout (in msecs) to supress piece sending attempts after an unsuccessfull attempt. See HKDSCtx_retryTimeoutHook()'
+
+      <<: *_ifw_configs
+
+    enums:
+      dwhPartID:
+        doc: Identifiers for each of the available partitions in the COM's datawarehousing
+        cgen: True
+        enum:
+          reportsxx: 25 # break in order is to preserve backwards compatibly.
+          logsxx:    26 # altought iy most likely isn't needed.
+          adsbxx:    27 # ¯\_(ツ)_/¯
+
+          reports0x: 0
+          reports1x: 1
+          logs0x:    2
+          logs1x:    3
+          adsb0x:    4
+          adsb1x:    5
+
+          reports00: 6
+          reports01: 7
+          reports02: 8
+          reports03: 9
+          reports10: 10
+          reports11: 11
+
+          logs00:    12
+          logs01:    13
+          logs02:    14
+          logs03:    15
+          logs10:    16
+          logs11:    17
+
+          adsb00:    18
+          adsb01:    19
+          adsb02:    21
+          adsb03:    22
+          adsb10:    23
+          adsb11:    24
+
+          END:       28
+
+      dwhBankID:
+        doc: must match dwhBankID_e in dwh.h
+        cgen: True
+        enum:
+          fram0: 0
+          fram1: 1
+          fram2: 2
+          fram3: 3
+
+          sram0: 4
+          sram1: 5
+
+          NONE: 6
+
+      dwhBankGroupID:
+        doc: ''
+        cgen: True
+        enum:
+          frams: 0
+          srams: 1
+
+      dwhBankState:
+        doc: ''
+        cgen: True
+        enum:
+          'OFF': 0
+          'ON': 1
+          'FAIL': 2
+          'DIAG_OK': 3
+          'DIAG_PEND': 4
+          'DIAG_CHECKING': 5
+
+
+      dwhStoreMode:
+        doc: |
+          Possible modes for how files are to be stored.
+
+          In Round Robin, each available partition (of that data type) accepts
+          an equal amount of files sequently.
+
+          In Group Copy, inside each bank group the files are stored in round
+          robin fashin over the partitions but each file is stored has one copy
+          stored in the frams and another in the srams. When downloading the
+          data, file dupplicates are skipped.
+
+        cgen: True
+        enum:
+          'ROUND_ROBIN': 0
+          'GROUP_COPY': 1
+
+
+  EPS:
+    addr: 4
+
+    data:
+      solarx_voltage:       { type: "I16", doc: "Voltage at the input of the X+/X- solar pannel (in mV)." }
+      solarx_current:       { type: "I16", doc: "Current at the input of the X+/X- solar pannel." }
+      solary_voltage:       { type: "I16", doc: "Voltage at the input of the Y+/Y- solar pannel (in mV)." }
+      solary_current:       { type: "I16", doc: "Current at the input of the Y+/Y- solar pannel." }
+      solarz_voltage:       { type: "I16", doc: "Voltage at the input of the Z+/Z- solar pannel (in mV)." }
+      solarz_current:       { type: "I16", doc: "Current at the input of the Z+/Z- solar pannel." }
+      mppt_voltage:         { type: "I16", doc: "Voltage at the MPPT output." }
+      mpptx_current:        { type: "I16", doc: "Current at the MPPT X output." }
+      mppty_current:        { type: "I16", doc: "Current at the MPPT Y output." }
+      mpptz_current:        { type: "I16", doc: "Current at the MPPT Z output." }
+      battery_charge:       { type: "I16", doc: "Average of the last 10 readings for battery's state of charge in percentage format. Created to avoid outliers that may inadvertently change the SC mode." }
+      battery_charge_raw:   { type: "I16", doc: "Current battery's state of charge in percentage format." }
+      charging_status:      { type: "I16", doc: "State of battery packs' balancing feature so that all cells have the same voltage." }
+      battery_voltage:      { type: "I16", doc: "Total battery pack voltage (in mV)." }
+      battery_current:      { type: "I16", doc: "Total battery pack current. Negative currents corresponds to current flowing into the battery (charging it), and vice-versa (in mA)." }
+      battery_heater_en:    { type: "I16", doc: "Whether the heater is on (1) or not (0). It's enabled whenever the average temperature of battery_temperature1, battery_temperature2, battery_temperature3 and battery_temperature4 is lower than heater_l and disabled when it's higher than heater_h." }
+      battery_temperature1: { type: "I16", doc: "Battery pack 1 temperature (in 10^(-2) degress Celsius)." }
+      battery_temperature2: { type: "I16", doc: "Battery pack 2 temperature (in 10^(-2) degress Celsius)." }
+      battery_temperature3: { type: "I16", doc: "Battery pack 3 temperature (in 10^(-2) degress Celsius)." }
+      battery_temperature4: { type: "I16", doc: "Battery pack 4 temperature (in 10^(-2) degress Celsius)." }
+      eps_temperature:      { type: "I16", doc: "Temperature read by the sensor in the EPS' PCB (in 10^(-2) degress Celsius)." }
+      micro_temperature:    { type: "I16", doc: "Temperature read by the sendor in the EPS microcontroller. EPS board 1 variable. Not implmented in EPS board 2." }
+      vcc0_voltage:         { type: "I16", doc: "Voltage being supplied to the TTC subsystem (in mV)." }
+      vcc0_current:         { type: "I16", doc: "Current being drawn by the TTC subsystem (in mA)." }
+      vcc1_voltage:         { type: "I16", doc: "Voltage being supplied to the OBC subsystem (in mV)." }
+      vcc1_current:         { type: "I16", doc: "Current being drawn by the OBC subsystem (in mA)." }
+      vcc2_voltage:         { type: "I16", doc: "Voltage being supplied to the COM subsystem (in mV)." }
+      vcc2_current:         { type: "I16", doc: "Current being drawn by the COM subsystem (in mA)." }
+      vcc3_voltage:         { type: "I16", doc: "Voltage being supplied to the PL subsystem (in mV)." }
+      vcc3_current:         { type: "I16", doc: "Current being drawn by the PL subsystem (in mA)." }
+      buses_voltage:        { type: "I16", doc: "Voltage being supplied to the EPS's main bus (in mV)." }
+      buses_current:        { type: "I16", doc: "Current being drawn by the EPS's main bus (in mA)." }
+      v3_3_voltage:         { type: "I16", doc: "Voltage being supplied to the EPS's 3.3 V bus (in mV)." }
+      v3_3_current:         { type: "I16", doc: "Current being drawn by the EPS's 3.3 V bus (in mA)." }
+      backup_voltage:       { type: "I16", doc: "Voltage being supplied to the EPS's backup line." }
+      backup_current:       { type: "I16", doc: "Current being drawn by the EPS's backup line." }
+      dtx:                  { type: "I16", doc: "MPPT status variable." }
+      dty:                  { type: "I16", doc: "MPPT status variable." }
+      dtz:                  { type: "I16", doc: "MPPT status variable." }
+      low_power_mode:       { type: "U8",  enum: "Bool", doc: "If EPS is in Low Power Mode. This mode was never implemented, hence the EPS should never be in LPM." }
+      obc_pets_recv:        { type: "U32", enum: Null,   doc: 'EPS pet debug var' }
+
+    reports:
+      ALL:
+        members:
+          - solarx_voltage
+          - solarx_current
+          - solary_voltage
+          - solary_current
+          - solarz_voltage
+          - solarz_current
+          - mppt_voltage
+          - mpptx_current
+          - mppty_current
+          - mpptz_current
+          - battery_charge
+          - charging_status
+          - battery_voltage
+          - battery_current
+          - battery_heater_en
+          - battery_temperature1
+          - battery_temperature2
+          - battery_temperature3
+          - battery_temperature4
+          - eps_temperature
+          - micro_temperature
+          - vcc0_voltage
+          - vcc0_current
+          - vcc1_voltage
+          - vcc1_current
+          - vcc2_voltage
+          - vcc2_current
+          - vcc3_voltage
+          - vcc3_current
+          - buses_voltage
+          - buses_current
+          - v3_3_voltage
+          - v3_3_current
+          - backup_voltage
+          - backup_current
+          - dtx
+          - dty
+          - dtz
+
+      tm_long:
+        members:
+          - solarx_voltage
+          - solarx_current
+          - solary_voltage
+          - solary_current
+          - solarz_voltage
+          - solarz_current
+          - battery_charge
+          - charging_status
+          - battery_voltage
+          - battery_current
+          - battery_temperature1
+          - battery_temperature2
+          - battery_temperature3
+          - battery_temperature4
+          - eps_temperature
+          - micro_temperature
+
+      tm_short:
+        members:
+          - vcc0_voltage
+          - vcc0_current
+          - vcc1_voltage
+          - vcc1_current
+          - vcc2_voltage
+          - vcc2_current
+          - vcc3_voltage
+          - vcc3_current
+          - buses_voltage
+          - buses_current
+          - v3_3_voltage
+          - v3_3_current
+
+      tm_periodic:
+        members:
+          - buses_current
+          - buses_voltage
+          - v3_3_current
+          - v3_3_voltage
+          - vcc0_current
+          - vcc0_voltage
+          - vcc1_current
+          - vcc1_voltage
+          - vcc2_current
+          - vcc2_voltage
+          - vcc3_current
+          - vcc3_voltage
+          - battery_charge
+          - battery_current
+          - battery_voltage
+          - charging_status
+          - eps_temperature
+          - battery_temperature1
+          - battery_temperature2
+          - battery_temperature3
+          - battery_temperature4
+          - micro_temperature
+          - log_countW
+          - log_countE
+          - log_countF
+          - time_boot
+
+      tm_both:
+        members:
+          - tm_long
+          - tm_short
+          - obc_pets_recv
+
+      tm_health:
+        members:
+          - time
+          - hk_scmode
+          - battery_charge
+          - charging_status
+          - eps_temperature
+          - battery_temperature1
+          - battery_temperature2
+          - battery_temperature3
+          - battery_temperature4
+          - micro_temperature
+
+      battery_temperatures:
+        members:
+          - battery_temperature1
+          - battery_temperature2
+          - battery_temperature3
+          - battery_temperature4
+
+      battery:
+        members:
+          - battery_charge
+          - battery_charge_raw
+          - battery_voltage
+          - battery_current
+          - battery_heater_en
+
+      flight_tm:
+        members:
+          - vcc0_current
+          - vcc1_current
+          - vcc2_current
+          - vcc3_current
+          - buses_current
+          - v3_3_current
+          - solarx_voltage
+          - solarx_current
+          - solary_voltage
+          - solary_current
+          - solarz_voltage
+          - solarz_current
+          - mppt_voltage
+          - mpptx_current
+          - mppty_current
+          - mpptz_current
+          - time_boot
+
+      flight_broadcast:
+        members:
+          - time_boot
+          - hk_scmode
+          - vcc0_voltage
+          - vcc1_voltage
+          - vcc2_voltage
+          - vcc3_voltage
+          - buses_voltage
+          - v3_3_voltage
+          - battery_voltage
+          - battery_current
+          - battery_heater_en
+          - battery_temperature1
+          - battery_temperature2
+          - battery_temperature3
+          - battery_temperature4
+          - eps_temperature
+          - micro_temperature
+          - battery_charge_raw
+          - battery_charge
+
+      flight_pass:
+        members:
+          - time_boot
+          - hk_scmode
+          - battery_charge
+          - battery_voltage
+          - battery_current
+          - battery_temperature1
+          - battery_temperature2
+          - battery_temperature3
+          - battery_temperature4
+          - eps_temperature
+
+    commands:
+      Set_Converter_1:
+        doc:
+        args:
+          NewState:
+            doc:
+            type: U8
+            enum: 'ModuleState'
+        returns:
+          status:
+            doc:
+            type: U8
+
+
+      Set_Converter_2:
+        doc:
+        args:
+          NewState:
+            doc:
+            type: U8
+            enum: 'ModuleState'
+        returns:
+          status:
+            doc:
+            type: U8
+
+      Set_Converter_3:
+        doc:
+        args:
+          NewState:
+            doc:
+            type: U8
+            enum: 'ModuleState'
+        returns:
+          status:
+            doc:
+            type: U8
+
+      Set_Battery_Power:
+        doc:
+        args:
+          NewState:
+            doc:
+            type: U8
+            enum: 'ModuleState'
+        returns:
+          status:
+            doc:
+            type: U8
+
+      Set_Solar_Panels_Power:
+        doc:
+        args:
+          NewState:
+            doc:
+            type: U8
+            enum: 'ModuleState'
+        returns:
+          status:
+            doc:
+            type: U8
+
+      Set_MPPT_X:
+        doc:
+        args:
+          NewState:
+            doc:
+            type: U8
+            enum: 'ModuleState'
+        returns:
+          status:
+            doc:
+            type: U8
+
+      Set_MPPT_Y:
+        doc:
+        args:
+          NewState:
+            doc:
+            type: U8
+            enum: 'ModuleState'
+        returns:
+          status:
+            doc:
+            type: U8
+
+      Set_MPPT_Z:
+        doc:
+        args:
+          NewState:
+            doc:
+            type: U8
+            enum: 'ModuleState'
+        returns:
+          status:
+            doc:
+            type: U8
+
+      power_ttc:
+        doc: 'Sends a power command to the TTC'
+        args:
+          NewState:
+            doc:
+            type: U8
+            enum: 'ModuleState'
+        returns: {}
+
+      power_obc:
+        doc: 'Sends a power command to the OBC'
+        args:
+          NewState:
+            doc:
+            type: U8
+            enum: 'ModuleState'
+        returns: {}
+
+      power_com:
+        doc: 'Sends a power command to the COM'
+        args:
+          NewState:
+            doc:
+            type: U8
+            enum: 'ModuleState'
+        returns: {}
+
+      power_pl:
+        doc: 'Sends a power command to the PL'
+        args:
+          NewState:
+            doc:
+            type: U8
+            enum: 'ModuleState'
+        returns: {}
+
+      Set_XFEED_Power:
+        doc:
+        args:
+          NewState:
+            doc:
+            type: U8
+            enum: 'ModuleState'
+        returns:
+          status:
+            doc:
+            type: U8
+
+
+      Set_Battery_Charger:
+        doc:
+        args:
+          NewState:
+            doc:
+            type: U8
+            enum: 'ModuleState'
+        returns:
+          status:
+            doc:
+            type: U8
+
+      Set_Battery_Heater:
+        doc:
+        args:
+          NewState:
+            doc:
+            type: U8
+            enum: 'ModuleState'
+        returns:
+          status:
+            doc:
+            type: U8
+
+      Set_Battery_Balance:
+        doc:
+        args:
+          NewState:
+            doc:
+            type: U8
+            enum: 'ModuleState'
+        returns:
+          status:
+            doc:
+            type: U8
+
+#      16:
+#        name: Set_Soc_Threshold
+#        doc:
+#        args:
+#          SoC:                  #Specify the mode to set the threshold
+#            doc:                #1 NORMAL_to_SAFE / 2 SAFE_to_NORMAL / 3 SAFE_to_LOW / 4 LOW_to_SAFE
+#            type: U8
+#          NewVal:               #enter new value between 0~100
+#            doc:
+#            type: U8
+#        returns:
+#          status:
+#            doc:
+#            type: U8
+#
+      Reset:
+        doc:
+        args:
+          NewState:
+            doc:
+            type: U8
+            enum: 'ModuleState'
+        returns:
+          status:
+            doc:
+            type: U8
+
+      minusOp:
+        doc: ""
+        args:
+          a:
+            doc:
+            type: I32
+          b:
+            doc:
+            type: I32
+        returns:
+          result:
+            doc:
+            type: I32
+
+      wdt_obc_pet:
+        doc: |
+          Pets the pseudo-wdt which reboots the EPS or OBC if it's not petted for more than
+          wdt_self_timeout and wdt_obc_timeout seconds, respectively. These 2 values are
+          EPS configs. This command is meant to be used by the OBC SS in order to inform the
+          EPS that it's working properly.
+        args: {}
+        returns: {}
+
+    diagnostics:
+      0:
+        name: Test_Converter1_5V
+        doc:
+        args:
+        returns:
+          result:
+            doc:
+            type: U8
+
+      1:
+        name: Test_Converter2_3V3
+        doc:
+        args:
+        returns:
+          result:
+            doc:
+            type: U8
+
+      2:
+        name: Test_Converter3_3V3
+        doc:
+        args:
+        returns:
+          result:
+            doc:
+            type: U8
+
+      3:
+        name: Test_MPPT_X
+        doc:
+        args:
+        returns:
+          result:
+            doc:
+            type: U8
+
+      4:
+        name: Test_MPPT_Y
+        doc:
+        args:
+        returns:
+          result:
+            doc:
+            type: U8
+
+      5:
+        name: Test_MPPT_Z
+        doc:
+        args:
+        returns:
+          result:
+            doc:
+            type: U8
+
+      6:
+        name: Test_Battery
+        doc:
+        args:
+        returns:
+          result:
+            doc:
+            type: U8
+
+      7:
+        name: Test_Battery_Charger
+        doc:
+        args:
+        returns:
+          result:
+            doc:
+            type: U8
+
+      8:
+        name: Test_TTC
+        doc:
+        args:
+        returns:
+          result:
+            doc:
+            type: U8
+
+      9:
+        name: Test_OBC
+        doc:
+        args:
+        returns:
+          result:
+            doc:
+            type: U8
+
+      10:
+        name: Test_COM
+        doc:
+        args:
+        returns:
+          result:
+            doc:
+            type: U8
+
+      11:
+        name: Test_PL
+        doc:
+        args:
+        returns:
+          result:
+            doc:
+            type: U8
+
+      12:
+        name: Test_PV
+        doc:
+        args:
+        returns:
+          result:
+            doc:
+            type: U8
+
+    configs:
+      conv0:
+        type: U8
+        default: 0
+        doc: "Converter0 3.3 (0-AUTO, 1-ON, 2-OFF)"
+
+      conv1:
+        type: U8
+        default: 0
+        doc: "Converter1 3.3 (0-AUTO, 1-ON, 2-OFF)"
+
+      # battery: Not needed?
+      #   type: U8
+      #   default: 0
+      #   doc: "battery MUX switch (0-AUTO, 1-ON, 2-OFF)"
+
+      battery_conv:
+        type: U8
+        default: 0
+        doc: "battery converter (0-AUTO, 1-ON, 2-OFF)"
+
+      battery_ins:
+        type: U8
+        default: 1
+        doc: "Indicates if battery is installed"
+
+
+      # battery_installed: Not needed?
+      #   type: U8
+      #   default: 2
+      #   doc: "lest the EPS know if the battery is instaled or simply being supplied by an external power supply (0-NOT INSTALLED, 1-INSTALLED, 2- POWER SUPPLY)"
+
+      # solar_panels: Not needed?
+      #   type: U8
+      #   default: 0
+      #   doc: "solar panels MUX switch (0-AUTO, 1-ON, 2-OFF)"
+
+      # mpptx:
+      #   type: U8
+      #   default: 0
+      #   doc: "MPPT X (0-AUTO, 1-ON, 2-OFF)"
+
+      # mppty:
+      #   type: U8
+      #   default: 0
+      #   doc: "MPPT Y (0-AUTO, 1-ON, 2-OFF)"
+
+      # mpptz:
+      #   type: U8
+      #   default: 0
+      #   doc: "MPPT Z (0-AUTO, 1-ON, 2-OFF)"
+
+      # soc_safe_h:
+      #   type: U8
+      #   default: 30
+      #   doc: "set the battery level at which the EPS switches gets out of Normal and into Safe mode. Value in % [0~100]"
+
+      # soc_normal:
+      #   type: U8
+      #   default: 40
+      #   doc: "set the battery level at which the EPS switches gets out of Safe and into Normal mode. Value in % [0~100]"
+
+      # soc_lpm: not needed?
+      #   type: U8
+      #   default: 0
+      #   doc: "set the battery level at which the EPS switches gets out of Safe and into Low Power mode. Value in % [0~100]"
+
+      # bat_min_temp:
+      #   type: U8
+      #   default: 1
+      #   doc: "set the temperature level of the battery at which the EPS switches into Safe mode. New Value in ºC [0~60]"
+
+      # bat_max_temp:
+      #   type: U8
+      #   default: 55
+      #   doc: "set the temperature level of the battery at which the EPS switches OFF the battery heaters. New Value in ºC [0~60]"
+
+      heater_l:
+        type: I16
+        default: 100 #0
+        doc: |
+          Battery temperature value, in 10^(-2) degrees, at which the EPS switches the battery heaters on.
+
+      heater_h:
+        type: I16
+        default: 3000 #3000
+        doc: |
+          Battery temperature value, in 10^(-2) degrees, at which the EPS switches the battery heaters off.
+
+      heater_enable:
+        type: U8
+        enum: 'Bool'
+        default: 1
+        doc: |
+          Enable heater funcionality which uses low and high boundary values (heater_l and heater_h, respectively) to toggle
+          battery heaters and get battery temperature to be within the [heater_l; heater_h] interval.
+
+      max_curr_obc:
+        type: U16
+        default: 1200 #800
+        doc: "set the maximum current consumption limit for the OBC when in NORMAL mode. New Value is in mA [0 ~ 1200]"
+
+      max_curr_com:
+        type: U16
+        default: 1200 #450
+        doc: "set the maximum current consumption limit for the COM when in NORMAL mode. New Value is in mA [0 ~ 1200]"
+
+      max_curr_ttc:
+        type: U16
+        default: 1200 #800
+        doc: "set the maximum current consumption limit for the TTC when in NORMAL mode. New Value is in mA [0 ~ 1200]"
+
+      max_curr_pl:
+        type: U16
+        default: 1200 #800
+        doc: "set the maximum current consumption limit for the PL when in NORMAL mode. New Value is in mA [0 ~ 1200]"
+
+      curr_lim:
+        type: U8
+        default: 1
+        doc: "enable current limiting functionality"
+
+      wdt_self_timeout:
+        type: U32
+        default: 00_000 #14000
+        doc: "The timeout (in milliseconds) for the pseudo-wdt which the OBC must pet (disabled if zero)"
+
+      wdt_obc_timeout:
+        type: U32
+        default: 00_000 #5000
+        doc: |
+          The timeout (in milliseconds) of the pseudo-wdt for reseting the OBC.
+          Note that, if wdt_self_timeout expired the EPS is reset and thus the
+          entire S/C while this timeout is for the OBC only.
+
+      i2c_stale_timeout:
+        type: U32
+        default: 0
+        doc: |
+          After this timeout (in milliseconds) whihtout receving I2C msgs the
+          EPS resets the whole I2C handling state machines and driver.
+          Disabled on 0
+
+      reboot_time_TTC:
+        type: U16
+        default: 5000
+        doc: |
+          Time (in milliseconds) during which the TTC stays shut down before it's
+          booted again in a power cycle by the EPS.
+          This time interval is not precise since there's a small latency in the
+          EPS.
+
+      reboot_time_OBC:
+        type: U16
+        default: 0
+        doc: |
+          Time (in milliseconds) during which the OBC stays shut down before it's
+          booted again in a power cycle by the EPS.
+          This time interval is not precise since there's a small latency in the
+          EPS.
+
+      reboot_time_COM:
+        type: U16
+        default: 0
+        doc: |
+          Time (in milliseconds) during which the COM stays shut down before it's
+          booted again in a power cycle by the EPS.
+          This time interval is not precise since there's a small latency in the
+          EPS.
+
+      reboot_time_PL:
+        type: U16
+        default: 0
+        doc: |
+          Time (in milliseconds) during which the PL stays shut down before it's
+          booted again in a power cycle by the EPS.
+          This time interval is not precise since there's a small latency in the
+          EPS.
+
+    events:
+      FAIL_SOLAR_PANEL_RAIL_X:
+        doc: ''
+      FAIL_SOLAR_PANEL_RAIL_Y:
+        doc: ''
+      FAIL_SOLAR_PANEL_Z:
+        doc: ''
+      FAIL_MPPT_X:
+        doc: ''
+      FAIL_MPPT_Y:
+        doc: ''
+      FAIL_MPPT_Z:
+        doc: ''
+      FAIL_BUCK_2:
+        doc: ''
+      FAIL_BUCK_3:
+        doc: ''
+      FAIL_MUX:
+        doc: ''
+      FAIL_BATTERY_CHARGER:
+        doc: ''
+      FAIL_BATTERY:
+        doc: ''
+      CHARGE_40:
+        doc: ''
+      CHARGE_30:
+        doc: ''
+      CHARGE_15:
+        doc: ''
+      FAIL_OVERLOAD_3V3:
+        doc: ''
+      FAIL_OVERLOAD_TTC:
+        doc: 'Power OUTPUT to TTC fail'
+      FAIL_OVERLOAD_OBC:
+        doc: 'Power OUTPUT to OBC fail'
+      FAIL_OVERLOAD_COM:
+        doc: 'Power OUTPUT to COM fail'
+      FAIL_OVERLOAD_PL:
+        doc: 'Power OUTPUT to PL fail'
+      NORMAL_OP:
+        doc: ''
+      SAFE_OP:
+        doc: ''
+      LOW_OP:
+        doc: ''
+      FAIL_XFEED:
+        doc: ''
+      INITIALIZED:
+        doc: 'signal to OBC that the EPS has initialized and 30 min have past'
+      FAIL_BUCK_1:
+        doc: ''
+      HIGH_POWER_CONSUMPTION_COM:
+        doc: ''
+      HIGH_POWER_CONSUMPTION_TTC:
+        doc: ''
+      HIGH_POWER_CONSUMPTION_OBC:
+        doc: ''
+      HIGH_POWER_CONSUMPTION_PL:
+        doc: ''
+      COM_IS_ON:
+        doc: ''
+      TTC_IS_ON:
+        doc: ''
+      OBC_IS_ON:
+        doc: ''
+      PL_IS_ON:
+        doc: ''
+      V3_3_PW_LIMITED:
+        doc: ''
+      COM_IS_OFF:
+        doc: ''
+      TTC_IS_OFF:
+        doc: ''
+      OBC_IS_OFF:
+        doc: ''
+      PL_IS_OFF:
+        doc: ''
+      OBC_PW_LIMITED:
+        doc: ''
+      TTC_PW_LIMITED:
+        doc: ''
+      PL_PW_LIMITED:
+        doc: ''
+      COM_PW_LIMITED:
+        doc: ''
+      OBC_FAILURE:
+        doc: 'OBC Failure detected'
+
+    enums:
+      ModuleState:
+        cgen: True
+        doc: |
+          Arguments for module state commands.
+        enum:
+          'OFF': 0        # OFF - module is off
+          'ON': 1         # ON - module is on and managed by EPS
+          'ON_MANUAL': 2  # ON_MANUAL - module is on without EPS management
+          'REBOOT': 3     # REBOOT - performs power cycle to the module
+          'CLEAN': 4      # CLEAN - cleans eps module: removes registered errors and sets module in 'ok' state
+
+  PL:
+    addr: 5
+
+    data:
+      pld_bench_batch:      { type: "U32",   doc:  "Number of processed buffers used for computing the benchmarks"}
+      pld_bench_count:      { type: "U32",   doc:  "Number of buffer batches"}
+      pld_bench_avg:        { type: "U32",   doc:  "Avg time (in microsecs) per buffer"}
+      pld_bench_min:        { type: "U32",   doc:  "Minumum time (in microsecs) spent processing a buffer"}
+      pld_bench_max:        { type: "U32",   doc:  "Maximum time (in microsecs) spent processing a buffer"}
+
+      pld_pwr_avg:          { type: "U32",   doc:  "Average sample value"}
+
+      pld_rec_process_fails: { type: "U32",   doc:  "Manchester decoding errors that may result from an err2 or err5 (see docuementation for pld_rec_err2 and pld_rec_err5 INCP variables) and the decoded bits are less than 56 bits (the number of bits that make up smalled Mode-S messages, including ADS-B short squitter messages). In these cases the decoded bits are discarded since they're not enough to make a Mode-S message."}
+      pld_rec_56bits_fails:  { type: "U32",   doc:  "Manchester decoding errors that may result from an err2 or err5 (see docuementation for pld_rec_err2 and pld_rec_err5 INCP variables) and the decoded bits are equal or more than 56 bits (the number of bits that make up and ADS-B short squitter msgs). In these cases the bits are analized to determine if the message is indeed a Mode-S message of 56 bits and is saved depending on the criteria set to save msgs."}
+
+      pld_rec_err0:         { type: "U32",   doc:  "Error when processing samples with low values and the transition (from low to high) comes too early, i.e. in less than 12 samples, since the current low was the inital part of an actual bit (remember that in manchester an actual bit is encoded as a transition, hence 2 manchester 'bits' are a single actual bit). The error counter is iterated, however the algorithm keeps trying to decode the messaage. The transition isn't interpreted as neither a 0 or a 1."}
+      pld_rec_err1:         { type: "U32",   doc:  "Error when processing samples with low values and the transition (from low to high) takes too long, i.e. more than 12 samples. The error counter is iterated, however the samples are interpreted as a bit 1 and the algorithm keeps trying to decode the messaage."}
+      pld_rec_err2:         { type: "U32",   doc:  "Error when processing samples with low values and there's no transition found (from low to high) after going through no_transition_tol samples. The variable 'no_transition_tol' stands for 'no transition tolerance' which must be a value greater or equal to 12 (the maximum number of samples during which there may be no transitions). The error counter is iterated and the algorith stops trying to decodee the message. If the number of bits already decoded is greater or equal to 56, the decoded information may be a short squitter ADS-B message."}
+      pld_rec_err3:         { type: "U32",   doc:  "Same as pld_rec_err0 but when processing samples with high values and looking for a transition from high to low."}
+      pld_rec_err4:         { type: "U32",   doc:  "Same as pld_rec_err1 but when processing samples with high values and looking for a transition from high to low. In this case the samples are interpreted as a bit 0."}
+      pld_rec_err5:         { type: "U32",   doc:  "Same as pld_rec_err2 but when processing samples with high values and looking for a transition from high to low."}
+
+      adsb_msg:             { type: "VDATA", doc:  "Last interpreted ADS-B message by PL decoder." }
+      adsb_msg_test:        { type: "VDATA", doc:  "ADS-B message tesst msg (0x0102(...)0D0E with 14 bytes)." }
+
+      pld_overruns:         { type: "U32",   doc:  "Counter of times the buffers were deleted due to being too slow processing them."}
+      pld_preambles:        { type: "U32",   doc:  "Number of bit seuqences which were interpreted as possible Mode-S preambles."}
+      pld_mode_s_crcfail:   { type: "U32",   doc:  "Number of ADS-B messages with invalid CRCs. Only ADS-B messages may have their CRCs checked. For other Mode-S messages, the existant counters are iterated, however, a CRC check is never done."}
+
+      pld_mode_s_df11:      { type: "U32",   doc:  "Number of received ADS-B messages with downlink format 11 (short squitters) since the last PL boot."}
+      pld_mode_s_df17:      { type: "U32",   doc:  "Number of received ADS-B messages with downlink format 17 (extended squitters) since the last PL boot."}
+      pld_mode_s_df18:      { type: "U32",   doc:  "Number of received ADS-B messages with downlink format 18 (extended squitters supplementary) since the last PL boot."}
+      pld_mode_s_dfother:   { type: "U32",   doc:  "Number of received Mode-S messages that are not ADS-B, i.e. their downlink formats are different than 11, 17 or 18."}
+      pld_mode_s_dferror:   { type: "U32",   doc:  "Number of supposed Mode-S messages that have non-existant downlink format numbers."}
+
+      pld_adsb_tc1:         { type: "U32",   doc:  "Number of received ADS-B messages with typecode 1. ADS-B message of type Aircraft ID."}
+      pld_adsb_tc2:         { type: "U32",   doc:  "Number of received ADS-B messages with typecode 2. ADS-B message of type Aircraft ID."}
+      pld_adsb_tc3:         { type: "U32",   doc:  "Number of received ADS-B messages with typecode 3. ADS-B message of type Aircraft ID."}
+      pld_adsb_tc4:         { type: "U32",   doc:  "Number of received ADS-B messages with typecode 4. ADS-B message of type Aircraft ID."}
+      pld_adsb_tc5:         { type: "U32",   doc:  "Number of received ADS-B messages with typecode 5. ADS-B message of type Surface Position."}
+      pld_adsb_tc6:         { type: "U32",   doc:  "Number of received ADS-B messages with typecode 6. ADS-B message of type Surface Position."}
+      pld_adsb_tc7:         { type: "U32",   doc:  "Number of received ADS-B messages with typecode 7. ADS-B message of type Surface Position."}
+      pld_adsb_tc8:         { type: "U32",   doc:  "Number of received ADS-B messages with typecode 8. ADS-B message of type Surface Position."}
+      pld_adsb_tc9:         { type: "U32",   doc:  "Number of received ADS-B messages with typecode 9. ADS-B message of type Airborne Position (with Baro Altitude)."}
+      pld_adsb_tc10:        { type: "U32",   doc:  "Number of received ADS-B messages with typecode 10. ADS-B message of type Airborne Position (with Baro Altitude)."}
+      pld_adsb_tc11:        { type: "U32",   doc:  "Number of received ADS-B messages with typecode 11. ADS-B message of type Airborne Position (with Baro Altitude)."}
+      pld_adsb_tc12:        { type: "U32",   doc:  "Number of received ADS-B messages with typecode 12. ADS-B message of type Airborne Position (with Baro Altitude)."}
+      pld_adsb_tc13:        { type: "U32",   doc:  "Number of received ADS-B messages with typecode 13. ADS-B message of type Airborne Position (with Baro Altitude)."}
+      pld_adsb_tc14:        { type: "U32",   doc:  "Number of received ADS-B messages with typecode 14. ADS-B message of type Airborne Position (with Baro Altitude)."}
+      pld_adsb_tc15:        { type: "U32",   doc:  "Number of received ADS-B messages with typecode 15. ADS-B message of type Airborne Position (with Baro Altitude)."}
+      pld_adsb_tc16:        { type: "U32",   doc:  "Number of received ADS-B messages with typecode 16. ADS-B message of type Airborne Position (with Baro Altitude)."}
+      pld_adsb_tc17:        { type: "U32",   doc:  "Number of received ADS-B messages with typecode 17. ADS-B message of type Airborne Position (with Baro Altitude)."}
+      pld_adsb_tc18:        { type: "U32",   doc:  "Number of received ADS-B messages with typecode 18. ADS-B message of type Airborne Position (with Baro Altitude)."}
+      pld_adsb_tc19:        { type: "U32",   doc:  "Number of received ADS-B messages with typecode 19. ADS-B message of type Airborne Velocities."}
+      pld_adsb_tc20:        { type: "U32",   doc:  "Number of received ADS-B messages with typecode 20. ADS-B message of type Airborne Position (with GNSS Height)."}
+      pld_adsb_tc21:        { type: "U32",   doc:  "Number of received ADS-B messages with typecode 21. ADS-B message of type Airborne Position (with GNSS Height)."}
+      pld_adsb_tc22:        { type: "U32",   doc:  "Number of received ADS-B messages with typecode 22. ADS-B message of type Airborne Position (with GNSS Height)."}
+      pld_adsb_tc23:        { type: "U32",   doc:  "Number of received ADS-B messages with typecode 23. ADS-B message of type Reserved."}
+      pld_adsb_tc24:        { type: "U32",   doc:  "Number of received ADS-B messages with typecode 24. ADS-B message of type Reserved."}
+      pld_adsb_tc25:        { type: "U32",   doc:  "Number of received ADS-B messages with typecode 25. ADS-B message of type Reserved."}
+      pld_adsb_tc26:        { type: "U32",   doc:  "Number of received ADS-B messages with typecode 26. ADS-B message of type Reserved."}
+      pld_adsb_tc27:        { type: "U32",   doc:  "Number of received ADS-B messages with typecode 27. ADS-B message of type Reserved."}
+      pld_adsb_tc28:        { type: "U32",   doc:  "Number of received ADS-B messages with typecode 28. ADS-B message of type Aircraft Status."}
+      pld_adsb_tc29:        { type: "U32",   doc:  "Number of received ADS-B messages with typecode 29. ADS-B message of type Taget State & Status Info."}
+      pld_adsb_tc31:        { type: "U32",   doc:  "Number of received ADS-B messages with typecode 31. ADS-B message of type Aircraft Operation Status."}
+      pld_adsb_tcerror:     { type: "U32",   doc:  "Number of received ADS-B messages with non-existant typecode numbers. By default all ADS-B messages have their CRCs checked and are discarded (i.e. not saved) if the CRC checkcum isn't 0 (CRC is non-valid). However, the CRC check may be bypassed by setting config pld_ignore_crc to true. In this case, there may be ADS-B messages with invalid typecode numbers."}
+
+      pld_adsb_saved:       { type: "U32",   doc:  "Number of ADS-B messages that were saved to another subsystem (most certainly the COM subsystem)."}
+
+      rf_status:            { type: "U8",    enum: Bool,             doc: "Checks if the RF front-end is ON(1) or OFF(0). 2 is returned in case of an error accessing the pin." }
+      mission_state:        { type: "U8",    enum: MissionState,     doc: "Checks the mission's state (MissionState)." }
+      mission_load_state:   { type: "U8",    enum: RemoteArrayState, doc: "Remote Arrays's state machine state for loading mission information (automatic schedule + filters) from the COM SS." }
+      timeot_load_state:    { type: "U8",    enum: TimeOTState,      doc: "Load state for time_ot variable by the PL from the OBC subsystem." }
+      filters_active:       { type: "U8",                            doc: "Number of active filters. There are only 2 filters available (filter by ICAO and typecode), therefore there may only be up to 2 active filters." }
+
+      timeot_attempts:      { type: "U8",    doc: "Number of attempts done to fecth time_ot variable from th OBC SS."}
+      timeot_backoff:       { type: "U32",   doc: "Time (in milliseconds) until next attempt. If the variable was already fecthed (timeot_load_state = TimeOTSate.SYNCED) the backoff time is UINT32_MAX."}
+
+      testra_state:         { type: "U8",    enum: RemoteArrayState, doc: "Remote Arrays's state machine state for testing", }
+
+
+    reports:
+      pld_bench:
+        members:
+          - pld_bench_batch
+          - pld_bench_count
+          - pld_bench_avg
+          - pld_bench_min
+          - pld_bench_max
+
+      pld_pwr:
+        members:
+          - pld_pwr_avg
+
+      pld_rec:
+        members:
+          - pld_rec_process_fails
+          - pld_rec_56bits_fails
+          - pld_rec_err0
+          - pld_rec_err1
+          - pld_rec_err2
+          - pld_rec_err3
+          - pld_rec_err4
+          - pld_rec_err5
+
+      pld_processing:
+        members:
+          - pld_overruns
+          - pld_preambles
+          - pld_mode_s_crcfail
+          - pld_adsb_saved
+          - df_all
+
+      pld:
+        members:
+          - pld_bench
+          - pld_pwr
+          - pld_rec
+          - pld_processing
+
+      pl_mission:
+        members:
+          - rf_status
+          - mission_state
+          - mission_load_state
+          - timeot_load_state
+          - filters_active
+
+      tc_aircraft_id:
+        members:
+          - pld_adsb_tc1
+          - pld_adsb_tc2
+          - pld_adsb_tc3
+          - pld_adsb_tc4
+
+      tc_surface_pos:
+        members:
+          - pld_adsb_tc5
+          - pld_adsb_tc6
+          - pld_adsb_tc7
+          - pld_adsb_tc8
+
+      tc_airborne_pos_baro:
+        members:
+          - pld_adsb_tc9
+          - pld_adsb_tc10
+          - pld_adsb_tc11
+          - pld_adsb_tc12
+          - pld_adsb_tc13
+          - pld_adsb_tc14
+          - pld_adsb_tc15
+          - pld_adsb_tc16
+          - pld_adsb_tc17
+          - pld_adsb_tc18
+
+      tc_airborne_pos_gnss:
+        members:
+          - pld_adsb_tc20
+          - pld_adsb_tc21
+          - pld_adsb_tc22
+
+      tc_reserved:
+        members:
+          - pld_adsb_tc23
+          - pld_adsb_tc24
+          - pld_adsb_tc25
+          - pld_adsb_tc26
+          - pld_adsb_tc27
+
+      tc_all:
+        members:
+          - tc_aircraft_id
+          - tc_surface_pos
+          - tc_airborne_pos_baro
+          - pld_adsb_tc19
+          - tc_airborne_pos_gnss
+          - tc_reserved
+          - pld_adsb_tc28
+          - pld_adsb_tc29
+          - pld_adsb_tc31
+          - pld_adsb_tcerror
+
+      df_all:
+        members:
+          - pld_mode_s_df11
+          - pld_mode_s_df17
+          - pld_mode_s_df18
+          - pld_mode_s_dfother
+          - pld_mode_s_dferror
+
+      tm_health:
+        members:
+          - time
+          - hk_scmode
+          - pl_mission
+
+      flight_tm:
+        members:
+          - time
+          - pld_processing
+          - pl_mission
+
+      flight_broadcast:
+        members:
+          - hk_scmode
+          - time_boot
+          - pl_mission
+
+      flight_pass:
+        members:
+          - time_boot
+          - hk_scmode
+          - mission_state
+          - rf_status
+          - pld_mode_s_df11
+          - pld_mode_s_df17
+          - pld_mode_s_df18
+          - pld_adsb_saved
+          - filters_active
+
+    commands:
+      timeot_load:
+        doc: |
+          Load time_ot variable from OBC ("by hand") to PL volatile memory.
+        args: {}
+        returns: {}
+
+      schedule_get:
+        doc: |
+          Asks the PL for a given interval in the mission automatic schedule.
+
+          NOTE To know the entire mission schedule saved in the PL's
+          volatile memory, the command 'gsctl schedule-get' should be used.
+          This command fetches the entire schedule and translates the
+          schedule entries' timestamps to human-readable ones.
+        args:
+          index:
+            doc: 'Index in the schedule array which corresponds to the interval we want to check.'
+            type: U8
+        returns:
+          err:
+            type: U8
+          start:
+            doc: 'Date (according to time_ot value) when the new mission interval will start.'
+            type: U32
+          stop:
+            doc: 'Date (according to time_ot value) when the new mission interval will stop.'
+            type: U32
+
+      schedule_set:
+        doc: |
+          Sends a new mission interval to be added to the mission automatic schedule
+          (both in PL and COM memories).
+
+          NOTE To add a new entry to the mission schedule the command
+          'gsctl schedule-set' should be used. This command can add multiple
+          entries at the same time using human-readable timestamps.
+        args:
+          start:
+            doc: 'Date (according to time_ot value) when the new mission interval will start.'
+            type: U32
+          stop:
+            doc: 'Date (according to time_ot value) when the new mission interval will stop.'
+            type: U32
+        returns:
+          err:
+            doc: '0: OK, 1: The intreval wanst set since the mission schedule was already full. Or the index chosen is invalid.'
+            type: U8
+
+      schedule_del:
+        doc: |
+          Deletes a given interval in the mission automatic schedule.
+        args:
+          index:
+            doc: Index in the schedule array which corresponds to the interval we want to delete.
+            type: U8
+        returns:
+          err:
+            doc: '0: OK, 1: The intreval wanst set since the index chosen in invalid.'
+            type: U8
+
+      schedule_del_all:
+        doc: |
+          Deletes the entire mission automatic schedule.
+        args: {}
+        returns: {}
+
+      schedule_avail:
+        doc: |
+          Returns how many interval spots are still available in the automatic
+          schedule array.
+        args: {}
+        returns:
+          available:
+            type: U8
+
+      filters_get:
+        doc: |
+          Gets information about the available filters that are being applied
+          to ADS-B messages.
+        args: {}
+        returns:
+          icao_enabled:
+            type: U8
+            enum: Bool
+          icao_data:
+            type: U32
+          tc_enabled:
+            type: U8
+            enum: Bool
+          tc_data:
+            type: U8
+            enum: ADSBTypecode
+
+      filters_create_icao:
+        doc: |
+          Creates a filter by ICAO (part of the ADS-B message header).
+          If an ICAO filter already exists, it's overwritten with the new ICAO number.
+        args:
+          icao:
+            type: U32
+        returns: {}
+
+      filters_create_tc:
+        doc: |
+          Creates a filter by typecode (part of the ADS-B messsage payload).
+          If as typecode filter already exists, it's overwritten with the new typecode number.
+        args:
+          tc:
+            type: U8
+            enum: ADSBTypecode
+        returns:
+          err:
+            type: U8
+            doc: |
+              Is true if the provided typecode falls outside the ADSBTypecode enum range or is 0
+              (ADSBTypecode_NONE) which is saved for when typcode filter is disabled.
+            enum: Bool
+
+      filters_del_icao:
+        doc: Disables the ICAO filter and deletes its data.
+        args: {}
+        returns: {}
+
+      filters_del_tc:
+        doc: Disables the Typecode filter and deletes its data.
+        args: {}
+        returns: {}
+
+      filters_del_all:
+        doc: Disables both the ICAO and Typecode filters and deletes their data.
+        args: {}
+        returns: {}
+
+      mission_load:
+        doc: |
+          Load mission information from COM ("by hand") to PL volatile memory.
+          Useful when there's an error in the mission state machine.
+
+          Mission information include filters and automatic schedule.
+        args: {}
+        returns: {}
+
+      mission_save:
+        doc: |
+          Save mission information from COM ("by hand") to PL volatile memory.
+          Useful when there's an error in the mission state machine.
+
+          Mission information include filters and automatic schedule.
+        args: {}
+        returns: {}
+
+      testra_read:
+        doc: 'Reads values for a, b, c and d vars from the RA test struct.'
+        args: {}
+        returns:
+          a:
+            type: U32
+          b:
+            type: U32
+          c:
+            type: U32
+          d:
+            type: U32
+
+      testra_write:
+        doc: 'Writes values for a, b, c and d vars from the RA test struct.'
+        args:
+          a:
+            type: U32
+          b:
+            type: U32
+          c:
+            type: U32
+          d:
+            type: U32
+        returns: {}
+
+      testra_load:
+        doc: 'Loads a test remote array, from PLs volatile memory, to COM.'
+        args: {}
+        returns: {}
+
+      testra_save:
+        doc: 'Stores a test remote array, from PLs volatile memory, to COM.'
+        args: {}
+        returns: {}
+
+    configs:
+      rf_mode:
+        type: U8
+        enum: RFMode
+        default: 'OFF'
+        doc: 'Mode in which the RF front-end is working.'
+
+      pld_preamble_threshold:
+        type: U16
+        default: 2000
+        doc: |
+          The difference between the lowest and highest values of a preamble
+          must be big enough (bigger than this threshold) for the supposed
+          preamble not to be considered noise.
+          Thus, if the difference is lower than this value, the preamble is
+          discarded as noise.
+          Minimum and maximum values are 0 and 4095, give to the fact that we're
+          working with a 12-bit ADC.
+
+      pld_sendto:
+        type: U8
+        default: 0 # COM:3 EGSE:8
+        doc: Address of subsystem to which the ADS-B messages will be sent (usually EGSE-8, or COM-3, or disabled-0).
+
+      pld_ignore_crc:
+        type: U8
+        enum: Bool
+        default: 'false'
+        doc: |
+          Decoded messages with invalid CRC are usually discarded. If the CRC
+          is ignored, then messages with invalid checksums will be saved.
+
+          For debugging purposes, this may be useful set to true.
+
+      pld_save_all_dfs:
+        type: U8
+        enum: Bool
+        default: 'false'
+        doc: |
+          If set to true, messages with other dfs are also saved.
+          These messages don't go through a a CRC check, they are simply saved.
+
+      pld_dbg_mode:
+        type: U8
+        enum: Bool
+        default: 'false'
+        doc: Send 'pld' data report to egse on sample buffer batch complete and active debug logs
+
+      pld_adsb_rate_limiting:
+        type: U16
+        default: 0
+        doc: |
+          Rate-limit of messages sent to the subsystem defined in config pld_sendto.
+          This config defines how many ADS-B messages are discarded for a single message
+          to be sent to the destination subsystem. When set to 0, there's no rate limiing,
+          i.e. all messages received are forwarded.
+          Useful to debug the PL decoder when ADS-B messages are being sent at a high rate.
+
+    enums:
+      RFMode:
+        cgen: True
+        doc: |
+          PL's ADS-B RF front-end mode of operation:
+          - ON: Always on;
+          - OFF: Always off;
+          - MISSION: Is either on or off according to mission schedule.
+        enum:
+          'ON': 0
+          'OFF': 1
+          'MISSION': 2
+
+      MissionState:
+        cgen: True
+        doc: |
+          State of the ADS-B mission.
+
+          INIT: Necessary variables to control mission schedule are being loaded
+          OFF: RF is conrolled by mission schedule and it's off.
+          ON: RF is controlled by mission schedule and it's on.
+          ERROR: There was an error.
+          DISABLED: Mission is desabled beacuse rf_mode config has a value different than 3.
+        enum:
+          'INIT': 0
+          'OFF': 1
+          'ON': 2
+          'ERROR': 3
+          'DISABLED': 4
+
+      TimeOTState:
+        cgen: True
+        doc: Load state for time_ot variable requested from the OBC by the PL.
+        enum:
+          'INIT': 0
+          'LOADING': 1
+          'SYNCED': 2
+          'ERROR': 3
+
+      ADSBTypecode:
+        cgen: True
+        doc: Enum to identify ADS-B messages by typecode when using typecode filters.
+        enum:
+          'NONE': 0
+          'AIRCRAFT_ID': 1 # Typecodes 1 to 4
+          'SURFACE_POS': 2 # Typecodes 5 to 8
+          'AIRBORNE_POS_BARO': 3 # Typecodes 9 to 18
+          'AIRBORNE_VEL': 4 # Typecode 19
+          'AIRBORNE_POS_GNSS': 5 # Typecodes 20 to 22
+          'RESERVED': 6 # Typecodes 23 to 27
+          'AIRCRAFT_STATUS': 7 # Typecode 28
+          'TARGET_STATE_STATUS_INFO': 8 # Typecode 29
+          'AIRCRAFT_OP_STATUS': 9  # Typecode 31
+
+  BEACON:
+    addr: 6
+
+    data: {}
+    reports: {}
+    commands:
+      sendMorse:
+        doc: "sends a text message over morse"
+        args:
+          speed:
+            type: U16
+            doc: 'The morse code unit speec in miliseconds'
+
+          text:
+            doc: The text to send
+            type: VDATA
+
+        returns:
+          success:
+            doc: 'Success (0:ok, 1:busy, 2:timeout)'
+            type: U8
+
+    events: {}
+    configs: {}
+
+
+  GS:
+    addr: 7
+
+    data:
+      ax25_tx_bytes:   { type: "U32", doc:   "" }
+      ax25_tx_msgs:    { type: "U32", doc:   "" }
+      ax25_tx_errs:    { type: "U32", doc:   "" }
+      ax25_rx_bytes:   { type: "U32", doc:   "" }
+      ax25_rx_msgs:    { type: "U32", doc:   "" }
+      ax25_rx_errs:    { type: "U32", doc:   "" }
+      ax25_remote_cs:  { type: "VDATA", doc: "Callsign of the last remote received msg (only changes if CS changes)" }
+
+      csp_tx_msgs:     { type: "U32", doc: "" }
+      csp_tx_bytes:    { type: "U32", doc: "" }
+      csp_rx_msgs:     { type: "U32", doc: "" }
+      csp_rx_bytes:    { type: "U32", doc: "" }
+
+      <<: *_rdp_data
+
+    reports:
+      <<: *_rdp_reports
+
+    commands:
+      <<: *_ifw_cmds # for unit tests
+
+    events: {}
+    configs:
+      test_s16:
+        type: S16
+        default: 'default'
+        doc: ''
+
+      pld_dbg_mode:
+        type: U8
+        enum: 'Bool'
+        default: 0
+        doc: "Ignore me, only for compilation of PLDecoder unit tests"
+
+
+
+  EGSE:
+    addr: 8
+
+    data: {}
+    reports: {}
+    commands: {}
+    events: {}
+    configs: {}
+
+
+  TEST:
+    addr: 9
+
+    data:
+      0: { "name":"test_u8",    "type":"U8" }
+      1: { "name":"test_u16",   "type":"U16" }
+      2: { "name":"test_u32",   "type":"U32" }
+      3: { "name":"test_i8",    "type":"I8" }
+      4: { "name":"test_i16",   "type":"I16" }
+      5: { "name":"test_i32",   "type":"I32" }
+      6: { "name":"test_data",  "type":"VDATA" }
+      7: { "name":"test_str16", "type":"S16" }
+
+    reports:
+      R1:
+        members:
+          - test_u8
+          - test_u16
+          - test_u32
+
+      ReportTest:
+        members:
+          - test_u8
+          - test_u16
+          - test_u32
+          - test_i8
+          - test_i16
+          - test_i32
+
+      ReportE1:
+        members:
+          - ReportE2
+
+      ReportE3:
+        members:
+          - test_u8
+
+      ReportE2:
+        members:
+          - ReportE3
+
+    commands:
+      0:
+        name: test_cmd0
+        doc: ""
+        args:
+          arg_u8:
+            doc: ""
+            type: U8
+          arg_u16:
+            doc: ""
+            type: U16
+          arg_u32:
+            doc: ""
+            type: U32
+        returns:
+          ret_u8:
+            doc: ""
+            type: U8
+          ret_u16:
+            doc: ""
+            type: U16
+
+      1:
+        name: test_cmdVData
+        doc: ""
+        args:
+          arg_data:
+            doc: ""
+            type: VDATA
+        returns: {}
+
+      test_cmdDFld:
+        doc: ""
+        args:
+          arg_dfld:
+            doc: ""
+            type: DVALUE
+        returns:
+          ret_dfld:
+            doc: ""
+            type: DVALUE
+
+      test_str16:
+        doc: ""
+        args:
+          arg:
+            doc: ""
+            type: S16
+        returns:
+          ret:
+            doc: ""
+            type: S16
+
+
+    events:
+      EVENT1:
+        doc: desc1
+        id: 1
+
+      EVENT2:
+        doc: ""
+
+      EVENT3:
+        doc: ""
+        id: 3
+
+    configs:
+      config1:
+        type: U8
+        default: 100
+        id: 0
+        doc: config1
+
+      config2:
+        type: I32
+        default: 200
+        doc: ""
+
+      config3:
+        type: U32
+        default: 300
+        id: 2
+
+      config_resolve:
+        type: U32
+        default: 'report:TEST:ReportE1'
+
+      config_enum:
+        type: U8
+        enum: 'enumTest2'
+        default: 'A'
+
+    enums:
+      enumTest:
+        cgen: False
+        enum:
+          "Mz": 1
+          "Hyde": 2
+          # "side_effect_function": function
+
+      enumTest2:
+        cgen: True
+        enum:
+          A: 0
+          B: 1
+          C: 2
