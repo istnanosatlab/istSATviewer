@@ -41,6 +41,9 @@ satviewer_command="./satExec3_10 --gs-callsign $GS_CALLSIGN --sc-callsign $SC_CA
 echo "Launching satviewer command: $satviewer_command"
 eval $satviewer_command
 
+#wait five seconds
+sleep 5
+
 
 # Launch smoothviewer to view the data in the browser
 smoothviewer_command="python3 smoothviewer/app.py"
