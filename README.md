@@ -1,13 +1,11 @@
 # istSatViewer
-Simple program that will provide the capability for any user with an SDR to receive and decode messages sent from ISTnanosat-1
+Simple program that will provide the capability for any user with an SDR to receive and decode messages sent from ISTSat-1. There are two versions, one lighter for Linux users mainly and another using a VM for Windows and Mac OS X users.
 
-This will be distributed as two docker images that will be run using docker-compose. One image is responsible for running GNURADIO and the other image is responsible for running the software that will decode the messages and print the data to the terminal
-
-Docker was chosen in order to facilitate the development process and make it accessible to anyone. After installing Docker and Docker Compose, with just one command you should be receiving messages from the Satellite
+For Linux it is  distributed as two docker images that will be run using docker-compose. One image is responsible for running GNURADIO and the other image is responsible for running the software that will decode the messages and print the data to the terminal. Docker was chosen in order to facilitate the development process and make it accessible to anyone. After installing Docker and Docker Compose, with just one command you should be receiving messages from the Satellite.
 
 
-# Instructions Windows
-In windows, docker does not support easily sharing the host USB device with the containers. To facilitate installation and guarantee future compatibility, we created a virtual machine that will contain everything you need to receive and decode messages from the satellite.
+# Instructions for Windows and Mac OS
+In Windows and Mac OS, docker does not support easily sharing the host USB device with the containers. To facilitate installation and guarantee future compatibility, we created a virtual machine (VM) that will contain everything you need to receive and decode messages from the satellite.
 
 1. Install [VirtualBox](https://www.virtualbox.org/wiki/Downloads)
 2. Download the ova file from [here](https://drive.google.com/drive/folders/1FTXfsTDHjU9etDDFKRuVthNt_m1gdBOq?usp=sharing)
@@ -43,11 +41,13 @@ After this you should any received messages will be shown in your terminal
 
 
 
-## Currently Supported SDR
+## Currently Supported Radios
 
 The current supported list of SDRs is:
 - PlutoSDR
 - RTL-SDR
+
+It is also possible to use a conventional HAM Radio through:
 - TNC
 
 the default script is configured to work with RTL-SDR. To use with PlutoSDR, you jaust have to change the docker-compose.yaml to use the correct script
