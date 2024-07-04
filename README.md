@@ -77,7 +77,10 @@ After this everything should run smoothly.
 
 ps: when the tnc_proxy.py script starts, you should see the lights on the tnc blink three times
 
+## Operational parameters
 
+''Downlink Frequency'': 145.895 MHz
+''CallSign'': CT6IST 
 
 # Common Errors
 
@@ -109,3 +112,4 @@ para a maquina virtual:
     rever as instrucoes
     gerar a nova imagem
     meter a nova imagem no site
+
