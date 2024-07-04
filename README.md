@@ -13,8 +13,9 @@ In Windows and Mac OS, docker does not support easily sharing the host USB devic
 4. Click on File -> Import Appliance
 5. Select the ova file you downloaded (this might take a while to complete, please be patient)
 6. Please check that you are sharing the USB device with the virtual machine (this can be done by clicking on the virtual machine -> settings -> USB -> add the SDR device)
-6. Start the virtual machine
+6. Start the virtual machine (better to choose Scalled Mode, View -> Host+C) 
 8. login with the default username and password (username: isat password: isat)
+9. Go to settings and adjust the keyboard layout to match your own
 
 Now you should have everything you need to start receiving messages from the satellite. To start the program, simply open the terminal and run the following command:
 ```bash
