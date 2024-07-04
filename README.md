@@ -79,8 +79,8 @@ ps: when the tnc_proxy.py script starts, you should see the lights on the tnc bl
 
 ## Operational parameters
 
-''Downlink Frequency'': 145.895 MHz
-''CallSign'': CT6IST 
+**Downlink Frequency**: 145.895 MHz \
+**CallSign**: CT6IST 
 
 # Common Errors
 
