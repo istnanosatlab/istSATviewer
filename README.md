@@ -103,13 +103,13 @@ If you see something similar to this means that the container is not able to acc
 
 <details>
 For the virtual machine: <br />
-    _ install script to launch things; <br />
-    _ install configuration fi.e; <br />
-    _ install a cool background scene; <br />
-    _ check network setup from Pluto; <br />
-    _ check port forwarding in network setup; <br />
-    _ checl USB forwarding configuration; <br /> 
-    _ Review all instructions; <br />
-    _ Create a new image; <br />
-    _ Upload new image to website.
+    - Install script to launch things; <br />
+    - Install configuration fi.e; <br />
+    - Install a cool background scene; <br />
+    - Check network setup from Pluto; <br />
+    - Check port forwarding in network setup; <br />
+    - Check USB forwarding configuration; <br /> 
+    - Review all instructions; <br />
+    - Create a new image; <br />
+    - Upload new image to website.
 </details>
