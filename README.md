@@ -102,14 +102,14 @@ If you see something similar to this means that the container is not able to acc
 
 
 <details>
-para a maquina virtual:
-    meter o script para lancar as coisas
-    meter o ficheiro de configuracao
-    meter um plano de fundo fixe
-    ver o setup de rede para o pluto
-    ver o setup de rede para passar uma porta
-    ver o setup de hardware para passar um usb
-    rever as instrucoes
-    gerar a nova imagem
-    meter a nova imagem no site
+For the virtual machine:
+    - install script to launch things; <br />
+    - install configuration fi.e; <br />
+    - install a cool background scene; <br />
+    - check network setup from Pluto; <br />
+    - check port forwarding in network setup; <br />
+    - checl USB forwarding configuration; <br /> 
+    - Review all instructions; <br />
+    - Create a new image; <br />
+    - Upload new image to website.
 </details>
