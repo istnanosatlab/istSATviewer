@@ -101,7 +101,7 @@ If you see something similar to this means that the container is not able to acc
 
 
 
-
+<details>
 para a maquina virtual:
     meter o script para lancar as coisas
     meter o ficheiro de configuracao
@@ -112,4 +112,4 @@ para a maquina virtual:
     rever as instrucoes
     gerar a nova imagem
     meter a nova imagem no site
-
+</details>
