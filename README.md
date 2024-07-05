@@ -104,9 +104,9 @@ If you see something similar to this means that the container is not able to acc
 <details>
 For the virtual machine: <br />
     - Install script to launch things; <br />
-    - Install configuration fi.e; <br />
+    - Install configuration file; <br />
     - Install a cool background scene; <br />
-    - Check network setup from Pluto; <br />
+    - Check network setup for Pluto; <br />
     - Check port forwarding in network setup; <br />
     - Check USB forwarding configuration; <br /> 
     - Review all instructions; <br />
