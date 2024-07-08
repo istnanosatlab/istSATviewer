@@ -1,0 +1,2049 @@
+_shared: # yaml shared stuff
+  ifw:
+    data: &_ifw_data
+      ifw_state:       { "type": "U8",  "enum": "INCPFWState", "doc": "The state of the INCP firewall (locked or unlocked)",                     }
+      ifw_checked:     { "type": "U16", "enum": Null,          "doc": "Number of messages checked against fw rules",                             }
+      ifw_failed:      { "type": "U16", "enum": Null,          "doc": "Number of messages checked and determied that should be dropped/blocked", }
+      ifw_autolock_in: { "type": "U16", "enum": Null,          "doc": "Seconds until IFW autolocks itself",                                      }
+      ifw_keys:        { "type": "U8",  "enum": Null,          "doc": "Bitfield with active keys. Bit0 corresponds to the key in slot0. Except bit4 which is the secret", }
+
+    reports: &_ifw_reports
+      ifw:
+        members:
+          - ifw_state
+          - ifw_checked
+          - ifw_failed
+          - ifw_autolock_in
+          - ifw_keys
+          
+    enums: &_ifw_enums
+      INCPFWError:
+        doc: ""
+        cgen: True
+        enum:
+          NONE: 0
+          INVALID_KEY: 1
+          DISABLED_KEY: 2
+          TIMEOUT: 3
+          INVALID_RESPONSE: 4
+          NO_CHALLENGE: 5
+          INVALID_STATE: 6
+          CHALLENGE_ISSUED: 7
+          DISABLED_SECRET: 8
+
+      INCPFWState:
+        doc: ""
+        cgen: True
+        enum:
+          LOCKED: 0
+          UNLOCKED: 1
+          CHALLENGED: 2
+  rdp:
+    data: &_rdp_data
+      rdp_state:           { type: "U8",  doc: "State of the RDP connection which can be: CLOSED (0), LISTEN (1), SYN_SENT (2), SYN_RCVD (3), OPEN (4) and CLOSE_WAIT (5)." }
+      rdp_tx_bytes:        { type: "U32", doc: "Number of RDP bytes sent excluding headers (total sum of bytes in segment body)." }
+      rdp_tx_bytes_data:   { type: "U32", doc: "Number of RDP bytes sent (RDP body and header)." }
+      rdp_tx_msgs:         { type: "U32", doc: "Number of RDP segments sent (including, packets, acks, syn acks, etc)." }
+      rdp_tx_msgs_data:    { type: "U32", doc: "Number of RDP segments sent which carry data for upper layers." }
+      rdp_tx_resends:      { type: "U32", doc: "Number of RDP segments which are not successfully sent at first and need to be resent." }
+      rdp_rx_bytes:        { type: "U32", doc: "Number of RDP bytes received (just the body, not the header)." }
+      rdp_rx_bytes_data:   { type: "U32", doc: "Number of RDP bytes received excluding headers (total sum of bytes in segment body)." }
+      rdp_rx_msgs:         { type: "U32", doc: "Number of RDP segments received (including, packets, acks, syn acks, etc)." }
+      rdp_rx_msgs_data:    { type: "U32", doc: "Number of RDP segments received which carry data for upper layers." }
+      rdp_rx_dups:         { type: "U32", doc: "Number of RDP segments received in duplicate (without counting the first one)." }
+      rdp_rx_out_of_order: { type: "U32", doc: "Number of RDP segments received with a sequence number which is greater than expected. This includes cases when two segments were swapped and one was lost mid sequence. Only applicable for window sizes greater than 1." }
+
+    reports: &_rdp_reports
+      rdp:
+        members:
+          - rdp_state
+          - rdp_tx_bytes
+          - rdp_tx_bytes_data
+          - rdp_tx_msgs
+          - rdp_tx_msgs_data
+          - rdp_tx_resends
+          - rdp_rx_bytes
+          - rdp_rx_bytes_data
+          - rdp_rx_msgs
+          - rdp_rx_msgs_data
+          - rdp_rx_dups
+          - rdp_rx_out_of_order
+
+subsystems:
+  COMMON:
+    addr: 15
+
+    data:
+      I2C0TxBytes:            { type: "U32",   enum: Null,       doc: "Number of bytes worth of I3C messages sent over I2C bus 0." }
+      I2C0TxMsgs:             { type: "U32",   enum: Null,       doc: "Number of I3C messages sent over I2C bus 0." }
+      I2C0TxErrs:             { type: "U32",   enum: Null,       doc: "Number of I3C messages that failed to be sent over I2C bus 0 (not counting retries)." }
+      I2C0RxBytes:            { type: "U32",   enum: Null,       doc: "Number of bytes worth of I3C messages received over I2C bus 0." }
+      I2C0RxMsgs:             { type: "U32",   enum: Null,       doc: "Number of I3C messages received over I2C bus 0." }
+      I2C0RxErrs:             { type: "U32",   enum: Null,       doc: "Number of I3C messages that failed to be decoded after they were received on I2C bus 0." }
+
+      I2C1TxBytes:            { type: "U32",   enum: Null,       doc: "Same as I2C0TxBytes but for I2C bus 1. Not implemented." }
+      I2C1TxMsgs:             { type: "U32",   enum: Null,       doc: "Same as I2C0TxMsgs but for I2C bus 1. Not implemented." }
+      I2C1TxErrs:             { type: "U32",   enum: Null,       doc: "Same as I2C0TxErrs but for I2C bus 1. Not implemented." }
+      I2C1RxBytes:            { type: "U32",   enum: Null,       doc: "Same as I2C0RxBytes but for I2C bus 1. Not implemented." }
+      I2C1RxMsgs:             { type: "U32",   enum: Null,       doc: "Same as I2C0RxMsgs but for I2C bus 1. Not implemented." }
+      I2C1RxErrs:             { type: "U32",   enum: Null,       doc: "Same as I2C0RxErrs but for I2C bus 1. Not implemented." }
+
+      SI2CRxDecodeErrs:       { type: "U16",   enum: Null,       doc: "Number of received I3C messages that the I2C service failed to decode.", }
+      SI2CRxDeliverErrs:      { type: "U16",   enum: Null,       doc: "Number of received I3C messages that the I2C service failed to deliver to the HK service.", }
+      SI2CTxMsgs:             { type: "U16",   enum: Null,       doc: "Number of I3C messages that were successfully enqueued in service I2C queue to be sent.", }
+      SI2CTxBytes:            { type: "U16",   enum: Null,       doc: "Number of bytes worth of I3C messages that were successfully enqueued in service I2C queue to be sent.", }
+      SI2CTxErrs:             { type: "U16",   enum: Null,       doc: "Number of I3C messages that after being successfully enqueued in service I2C queue couldn't be sent.", }
+      SI2CEnqErrs:            { type: "U16",   enum: Null,       doc: "Number of I3C messages not enqueued, probably due to I2C service queue being full.", }
+
+      eeprom_start_phy:       { type: "U32",   enum: Null,       doc: "EEPROM's initial physical address.", }
+      eeprom_end_phy:         { type: "U32",   enum: Null,       doc: "EEPROM's final physical address.", }
+      eeprom_start_vir:       { type: "U32",   enum: Null,       doc: "EEPROM's initial virtual address (as access by io_read & io_write).", }
+      eeprom_end_vir:         { type: "U32",   enum: Null,       doc: "EEPROM's final virtual address (as access by io_read & io_write).", }
+      eeprom_size:            { type: "U32",   enum: Null,       doc: "EEPROM's total size.", }
+      eeprom_page_size:       { type: "U32",   enum: Null,       doc: "EEPROM's page size.", }
+      eeprom_page_num:        { type: "U32",   enum: Null,       doc: "Number of pages the EEPROM has.", }
+
+      heap_free:              { type: "I32",   enum: Null,       doc: "The available memory in bytes (-1 if N/A)" }
+      rand:                   { type: "U32",   enum: Null,       doc: "Returns a random value (for testing purposes)." }
+      one:                    { type: "U32",   enum: Null,       doc: "Returns a one (for testing purposes)." }
+      ss:                     { type: "U8",    enum: Null,       doc: "The subsystem's address", }
+      time_boot:              { type: "U32",   enum: Null,       doc: "Seconds since a given subsystem was booted.", }
+      time_ot:                { type: "U32",   enum: Null,       doc: "Seconds since OBC's Real-Time Clock (RTC) was first booted. Keeps counting idependently of wether OBC is ON of OFF.", }
+      time_real:              { type: "U32",   enum: Null,       doc: "Seconds since epoch (01/01/1970) until now. Allows us to know what 'now' is.", }
+      time_rt0:               { type: "U32",   enum: Null,       doc: "Time in seconds since epoch when time_ot was 0. Recall that 'time_real = time_rt0 + time_ot'. It's 0 if unset. Even if set, it may be de-synchronized.", }
+      time_syncronized:       { type: "U8",    enum: Null,       doc: "Indication if the time_rt0 is de-synchronized.",}
+      hk_scmode:              { type: "U8",    enum: "SCMode",   doc: "Spacecraft mode.",  }
+      hk_gateway:             { type: "U8",    enum: "ISTsatSS", doc: "I2C address of the I3C default gateway currently in use. In safe mode ir should be the OBC, in normal mode the COM.", }
+      hk_cpuload1m:           { type: "U8",    enum: Null,       doc: "CPU usage in % (i.e. from 0 to 1000) of the last minute", }
+      hk_cpuload15:           { type: "U16",   enum: Null,       doc: "CPU usage in %0 (i.e. from 0 to 1000) of the last 15secs.", }
+      hk_incpRxMsgs:          { type: "U32",   enum: Null,       doc: "Number of INCP msgs received (included invalid ones)", }
+      hk_incpRxErr:           { type: "U32",   enum: Null,       doc: "Number of INCP msgs received (included invalid ones)", }
+      hk_incpDropped:         { type: "U32",   enum: Null,       doc: "Number which (although valid) were not processed correctly. E.g. a request for an not implemented data var.", }
+      log_countI:             { type: "U32",   enum: Null,       doc: "Number of INFO level log messages produced.", }
+      log_countW:             { type: "U32",   enum: Null,       doc: "Number of WARNING level log messages produced.", }
+      log_countE:             { type: "U32",   enum: Null,       doc: "Number of ERROR level log messages produced.", }
+      log_countF:             { type: "U32",   enum: Null,       doc: "Number of FATAL level log messages produced.", }
+      conf_version:           { type: "U32",   enum: Null,       doc: "Version of the config set of the system", }
+      conf_persistent:        { type: "U8",    enum: Null,       doc: "Can store configs persistently (0: false, 1: true).", }
+      conf_size:              { type: "U32",   enum: Null,       doc: "sizeof(hkConfigAP_t)", }
+      conf_sn:                { type: "U16",   enum: Null,       doc: "Last sequence number of AP", }
+      conf_tsv:               { type: "U32",   enum: Null,       doc: "timestamp, in OBC TIME, of last change to volatile configs", }
+      conf_tsp:               { type: "U32",   enum: Null,       doc: "timestamp, in OBC TIME, of last change to persistent configs", }
+      conf_p0_valid:          { type: "U8",    enum: Null,       doc: "valid config (Atomic Page 0, 0:    false, 1: true)", }
+      conf_p0_sn:             { type: "U16",   enum: Null,       doc: "Sequence Number (Atomic Page 0)", }
+      conf_p1_valid:          { type: "U8",    enum: Null,       doc: "valid config (Atomic Page 1)", }
+      conf_p1_sn:             { type: "U16",   enum: Null,       doc: "Sequence Number (Atomic Page 1, 0: false, 1: true)", }
+      version_commit:         { type: "U32",   enum: Null,       doc: "The git commit hash of the software when the bin was built", }
+      version_major:          { type: "U8",    enum: Null,       doc: "The major version as specifified in the module .mk file", }
+      version_minor:          { type: "U8",    enum: Null,       doc: "The minor version as specifified in the module .mk file", }
+      version_schema_hash:    { type: "U32",   enum: Null,       doc: "The hash of the schema file", }
+
+
+    reports:
+      I2C0:
+        members:
+          - I2C0TxBytes
+          - I2C0TxMsgs
+          - I2C0TxErrs
+          - I2C0RxBytes
+          - I2C0RxMsgs
+          - I2C0RxErrs
+
+      I2C1:
+        members:
+          - I2C1TxBytes
+          - I2C1TxMsgs
+          - I2C1TxErrs
+          - I2C1RxBytes
+          - I2C1RxMsgs
+          - I2C1RxErrs
+
+      I2C:
+        members:
+          - I2C0
+          - I2C1
+
+      SI2C:
+        members:
+          - SI2CRxDecodeErrs
+          - SI2CRxDeliverErrs
+          - SI2CTxMsgs
+          - SI2CTxErrs
+          - SI2CEnqErrs
+
+      eeprom:
+        members:
+          - eeprom_start_phy
+          - eeprom_end_phy
+          - eeprom_start_vir
+          - eeprom_end_vir
+          - eeprom_size
+          - eeprom_page_size
+          - eeprom_page_num
+
+      log:
+        members:
+          - log_countI
+          - log_countW
+          - log_countE
+          - log_countF
+
+      hk:
+        members:
+          - hk_scmode
+          - hk_cpuload1m
+          - hk_cpuload15
+          - hk_incpRxMsgs
+          - hk_incpRxErr
+          - hk_incpDropped
+          - log
+
+      time:
+        members:
+          - time_boot
+          - time_ot
+          #- time_real
+          #- time_rt0
+          #- time_syncronized
+
+      conf:
+        members:
+          - conf_version
+          - conf_persistent
+          - conf_size
+          - conf_sn
+          - conf_tsv
+          - conf_tsp
+
+      conf_full:
+        members:
+          - conf
+          - conf_p0_valid
+          - conf_p0_sn
+          - conf_p1_valid
+          - conf_p1_sn
+
+      version:
+        members:
+          - version_commit
+          - version_major
+          - version_minor
+          - version_schema_hash
+
+    events:
+      test:
+        doc: Used for testing.
+
+      boot:
+        doc: The system just turned on.
+
+      hk_safe2normal:
+        doc: The system changed from safe to normal mode.
+
+      rdp_connect:
+        doc: An RDP connection was established.
+
+      rdp_disconnect:
+        doc: An established RDP connection was lost.
+
+    enums:
+      ISTsatSS:
+        cgen: False
+        enum:
+          OBC: 1
+          TTC: 2
+          COM: 3
+          EPS: 4
+          PL: 5
+          BEACON: 6
+          GS: 7
+          EGSE: 8
+          TEST: 9
+          COMMON: 15
+          NONE: 16
+
+      SCMode:
+        cgen: True
+        doc: |
+          Spacecraft modes. Note that the actual modes modes are only INIT, SAFE and NORMAL.
+        enum:
+          'INIT': 0
+          'INIT2SAFE': 1
+          'SAFE': 2
+          'SAFE2NORMAL': 3
+          'NORMAL': 4
+          'NORMAL2SAFE': 5
+
+      TTCModulation:
+        cgen: True
+        doc: The modulation pair (TX/RX) (should match TOPModeType_e)
+        enum:
+          'AFSK': 0 # 1200 bit/s
+          'BPSK': 1 # 9600 bit/s
+          'FSK': 2 # 9600 bit/s
+          'GMSK': 3 # 9600 bit/s
+          'QPSK': 4 # 19200 bit/s
+          'BPSK_SLOW': 5 # 4800 bit/s
+
+      Bool:
+        cgen: True
+        enum:
+          'false': 0
+          'true': 1
+
+      RemoteArrayState:
+        cgen: True
+        doc: State in which the process of fetching information (the Remote Array) from another subsystem is at.
+        enum:
+          'INIT': 0
+          'LOADING': 1
+          'SYNCED': 2
+          'SAVING': 3
+          'ERROR': 4
+
+      HkGateway:
+        cgen: True
+        doc: Subsystem to which the TTC sends the INCP messages to be unopacked and sent to the destination subsystem.
+        enum:
+          'OBC': 0 # Always OBC
+          'COM_IF_NORMAL': 1 # For flight
+          'COM': 2 # Always COM
+
+      IOError:
+        cgen: False
+        doc: 'Maps to IOError_e in os/io.h'
+        enum:
+          'NONE': 0
+          'DEV': 1
+          'SIZE': 2
+          'ADDR': 3
+
+      <<: *_ifw_enums
+
+  OBC:
+    addr: 1
+
+    data:
+      # Sensor readings
+      gyro_x:            { type: "I32",   doc: "Current x component of gyro reading (in 10^-7 deg/s)"}
+      gyro_y:            { type: "I32",   doc: "Current y component of gyro reading (in 10^-7 deg/s)"}
+      gyro_z:            { type: "I32",   doc: "Current z component of gyro reading (in 10^-7 deg/s)"}
+      mag_B_x:           { type: "I32",   doc: "Current x component of mag reading (in nT)"}
+      mag_B_y:           { type: "I32",   doc: "Current y component of mag reading (in nT)"}
+      mag_B_z:           { type: "I32",   doc: "Current z component of mag reading (in nT)"}
+      sunsensor_xplus:   { type: "U32",   doc: "Current reading from the X+ photodiode (in uV)"}
+      sunsensor_xminus:  { type: "U32",   doc: "Current reading from the X- photodiode (in uV)"}
+      sunsensor_yplus:   { type: "U32",   doc: "Current reading from the Y+ photodiode (in uV)"}
+      sunsensor_yminus:  { type: "U32",   doc: "Current reading from the Y- photodiode (in uV)"}
+      sunsensor_zplus:   { type: "U32",   doc: "Current reading from the Z+ photodiode (in uV)"}
+
+      # ADCS
+      adcs_gyro_x:                 { type: "I32",   doc: "x component of gyro reading (in 10^-7 deg/s) used for ADCS calculations"}
+      adcs_gyro_y:                 { type: "I32",   doc: "y component of gyro reading (in 10^-7 deg/s) used for ADCS calculations"}
+      adcs_gyro_z:                 { type: "I32",   doc: "z component of gyro reading (in 10^-7 deg/s) used for ADCS calculations"}
+      adcs_mag_B_x:                { type: "I32",   doc: "x component of mag reading (in nT) used for ADCS calculations"}
+      adcs_mag_B_y:                { type: "I32",   doc: "y component of mag reading (in nT) used for ADCS calculations"}
+      adcs_mag_B_z:                { type: "I32",   doc: "z component of mag reading (in nT) used for ADCS calculations"}
+      adcs_sunsensor_xplus:        { type: "U32",   doc: "Readings from the X+ photodiode (in uV) used for ADCS calculations"}
+      adcs_sunsensor_xminus:       { type: "U32",   doc: "Readings from the X- photodiode (in uV) used for ADCS calculations"}
+      adcs_sunsensor_yplus:        { type: "U32",   doc: "Readings from the Y+ photodiode (in uV) used for ADCS calculations"}
+      adcs_sunsensor_yminus:       { type: "U32",   doc: "Readings from the Y- photodiode (in uV) used for ADCS calculations"}
+      adcs_sunsensor_zplus:        { type: "U32",   doc: "Readings from the Z+ photodiode (in uV) used for ADCS calculations"}
+      adcs_sun_vec_B_x:            { type: "I32",   doc: "x component of sun vector (in 10^-6 adim)"}
+      adcs_sun_vec_B_y:            { type: "I32",   doc: "y component of sun vector (in 10^-6 adim)"}
+      adcs_sun_vec_B_z:            { type: "I32",   doc: "z component of sun vector (in 10^-6 adim)"}
+      adcs_sat_pos_x:              { type: "I32",   doc: "x component of sat. position (in 10^-2 meters)"}
+      adcs_sat_pos_y:              { type: "I32",   doc: "y component of sat. position (in 10^-2 meters)"}
+      adcs_sat_pos_z:              { type: "I32",   doc: "z component of sat. position (in 10^-2 meters)"}
+      adcs_sat_pos_lat:            { type: "I32",   doc: "latitude of sat. position (in 10^-8 radians)"}
+      adcs_sat_pos_lon:            { type: "I32",   doc: "longitude of sat. position (in 10^-8 radians)"}
+      adcs_sat_pos_r:              { type: "I32",   doc: "magnitude of sat. position vector (in 10^-2 meters)"}
+      adcs_sun_pos_x:              { type: "I32",   doc: "x component of sun position (in 10^2 meters)"}
+      adcs_sun_pos_y:              { type: "I32",   doc: "y component of sun position (in 10^2 meters)"}
+      adcs_sun_pos_z:              { type: "I32",   doc: "z component of sun position (in 10^2 meters)"}
+      adcs_mag_ECI_x:              { type: "I32",   doc: "x component of magnetic field estimation in ECI (in 10^-4 nT)"}
+      adcs_mag_ECI_y:              { type: "I32",   doc: "y component of magnetic field estimation in ECI (in 10^-4 nT)"}
+      adcs_mag_ECI_z:              { type: "I32",   doc: "z component of magnetic field estimation in ECI (in 10^-4 nT)"}
+      adcs_quat_x:                 { type: "I32",   doc: "x component of quaternion estimation (in 10^-9 adim)"}
+      adcs_quat_y:                 { type: "I32",   doc: "y component of quaternion estimation (in 10^-9 adim)"}
+      adcs_quat_z:                 { type: "I32",   doc: "z component of quaternion estimation (in 10^-9 adim)"}
+      adcs_quat_w:                 { type: "I32",   doc: "w component of quaternion estimation (in 10^-9 adim)"}
+      adcs_bias_x:                 { type: "I32",   doc: "x component of gyro bias estimation (in 10^-7 deg/s)"}
+      adcs_bias_y:                 { type: "I32",   doc: "y component of gyro bias estimation (in 10^-7 deg/s)"}
+      adcs_bias_z:                 { type: "I32",   doc: "z component of gyro bias estimation (in 10^-7 deg/s)"}
+      adcs_dutycycle_x:            { type: "I16",   doc: "x component of duty cycle (in 10^-4 adim)" }
+      adcs_dutycycle_y:            { type: "I16",   doc: "y component of duty cycle (in 10^-4 adim)" }
+      adcs_dutycycle_z:            { type: "I16",   doc: "z component of duty cycle (in 10^-4 adim)" }
+      adcs_est_status:             { type: "U8",    doc: "Bitfield of sattellite and sun estimation status (0x01: Sat position integration; 0x02: Sun position integration)." }
+      adcs_state:                  { type: "U8",    enum: ADCSState, doc: "State of ADCS state machine" }
+      adcs_det_done:               { type: "U8",    enum: Bool,      doc: "True if detumbling is finished, false if not" }
+      adcs_ang_vel_magn:           { type: "U32",   doc: "Magnitude of angular velocity in (in 10^-7 deg/s)." }
+      adcs_sat_updates_left:       { type: "U8",    doc: "Number of sat updates left to be used for sat position integration stored persistently in the OBC SS." }
+      adcs_sat_updates_time_left:  { type: "U32",   doc: "Time left until the most recent sat update stored persistently in the OBC becomes obsolete, i.e. is deleted and there are no updates left for the ADCS task to keep doing sat position integration." }
+      adcs_sun_updates_left:       { type: "U8",    doc: "Same as adcs_sat_updates_left but for sun updates." }
+      adcs_sun_updates_time_left:  { type: "U32",   doc: "Same as adcs_sat_updates_time_left but for sun updates." }
+
+      current_gyro:           { type: "I32",   doc: "Gyroscope current in uA" }
+      current_mag:            { type: "I32",   doc: "Magnetometer current in uA" }
+      temperature:            { type: "I32",   doc: "Value measured by the OBC's internal temperature sensor (in 10² degrees celsius)." }
+      temperature1:           { type: "I32",   doc: "Value measured by the OBC's external temperature sensor (in 10² degrees celsius)." }
+
+      # COMMS
+      uart_tx_bytes:       { type: "U32", doc: "Total number of bytes sent over the UART bus (communication interface with the TTC SS)." }
+      uart_rx_bytes:       { type: "U32", doc: "Total number of bytes received on the UART bus (communication interface with the TTC SS)." }
+
+      # top_tx_msgs:      { type: "U32", doc: "" }
+      top_tx_msgs_data:    { type: "U32", doc: "Number of successful TOP messages sent to the TTC (over the UART bus)." }
+      # top_tx_errs:      { type: "U16", doc: "" }
+      # top_tx_timeouts:  { type: "U16", doc: "Number of messages which were unacknowledged (didn't receive neither ack nor nack)" }
+      # top_rx_msgs:      { type: "U32", doc: "" }
+      top_rx_msgs_data:    { type: "U32", doc: "Number of TOP messages received from the TTC (over the UART bus)." }
+      # top_rx_errs:      { type: "U16", doc: "" }
+
+      csp_tx_msgs:         { type: "U32", doc: "Number of radio messages sent with the CubeSat Protocol (CSP) layer." }
+      csp_tx_bytes:        { type: "U32", doc: "Number of bytes worth of radio messages sent with the CubeSat Protocol (CSP) layer." }
+      csp_rx_msgs:         { type: "U32", doc: "Number of radio messages received with the CubeSat Protocol (CSP) layer." }
+      csp_rx_bytes:        { type: "U32", doc: "Number of bytes worth of radio messages received with the CubeSat Protocol (CSP) layer." }
+
+      # rdp_state:           { type: "U8",  doc: "Current state of the OBC's RDP state machine" }
+      # rdp_tx_bytes:        { type: "U32", doc: "" }
+      # rdp_tx_bytes_data:   { type: "U32", doc: "" }
+      # rdp_tx_msgs:         { type: "U32", doc: "" }
+      # rdp_tx_msgs_data:    { type: "U32", doc: "" }
+      # rdp_tx_resends:      { type: "U32", doc: "" }
+      # rdp_rx_bytes:        { type: "U32", doc: "" }
+      # rdp_rx_bytes_data:   { type: "U32", doc: "" }
+      # rdp_rx_msgs:         { type: "U32", doc: "" }
+      # rdp_rx_msgs_data:    { type: "U32", doc: "" }
+      # rdp_rx_dups:         { type: "U32", doc: "" }
+      # rdp_rx_out_of_order: { type: "U32", doc: "" }
+
+      # HK
+      # hk_part_reports_head:  { type: "U32",  doc: "Returns the start memory address where reports are saved in the OBC.", }
+      # hk_part_reports_tail:  { type: "U32",  doc: "Returns the end memory address where reports are saved in the OBC.", }
+      hk_part_reports_used:  { type: "U32",  doc: "Returns the amount of OBC storage that has been filled with reports (in bytes).", }
+      hk_part_reports_avail: { type: "U32",  doc: "Returns the amount of OBC storage that is still available for reports (in bytes).", }
+      # hk_part_logs_head:     { type: "U32",  doc: "", }
+      # hk_part_logs_tail:     { type: "U32",  doc: "", }
+      hk_part_logs_used:     { type: "U32",  doc: "Returns the amount of OBC storage that has been filled with logs (in bytes).", }
+      hk_part_logs_avail:    { type: "U32",  doc: "Returns the amount of OBC storage that is still available for logs (in bytes).", }
+
+      hk_mon_ttc_liveliness: { type: "U32",                   doc: "Milliseconds since last TTC heartbeat (i.e. ping) message.", }
+      hk_mon_ttc_next_reset: { type: "U32",                   doc: "Milliseconds until next TTC reset attempt (UINT32_MAX if not attempting to reset).", }
+      hk_mon_ttc_num_resets: { type: "U16",                   doc: "Number of performed attempts to reset the TTC subsystem.", }
+      hk_mon_ttc_status:     { type: "U8",  enum: "SStatus",  doc: "TTC monitoring status according to SStatus enum. It's determined based on whether the TTC is responding to OBC pings.", }
+
+      hk_mon_com_liveliness: { type: "U32",                   doc: "Milliseconds since last COM heartbeat (i.e. ping) message.", }
+      hk_mon_com_next_reset: { type: "U32",                   doc: "Milliseconds until next COM reset attempt (UINT32_MAX if not attempting to reset).", }
+      hk_mon_com_num_resets: { type: "U16",                   doc: "Number of performed attempts to reset the COM subsystem.", }
+      hk_mon_com_status:     { type: "U8",  enum: "SStatus",  doc: "COM monitoring status according to SStatus enum. It's determined based on whether the COM is responding to OBC pings.", }
+
+      hk_mon_eps_liveliness: { type: "U32",                   doc: "Milliseconds since last EPS heartbeat (i.e. ping) message.", }
+      hk_mon_eps_next_reset: { type: "U32",                   doc: "Milliseconds until next EPS reset attempt (UINT32_MAX if not attempting to reset).", }
+      hk_mon_eps_num_resets: { type: "U16",                   doc: "Number of performed attempts to reset the COM subsystem.", }
+      hk_mon_eps_status:     { type: "U8",  enum: "SStatus",  doc: "EPS monitoring status according to SStatus enum. It's determined based on whether the EPS is responding to OBC pings.", }
+
+      hk_mon_pl_liveliness: { type: "U32",                   doc: "Milliseconds since last PL heartbeat (i.e. ping) message.", }
+      hk_mon_pl_next_reset: { type: "U32",                   doc: "Milliseconds until next PL reset attempt (UINT32_MAX if not attempting to reset).", }
+      hk_mon_pl_num_resets: { type: "U16",                   doc: "Number of performed attempts to reset the COM subsystem.", }
+      hk_mon_pl_status:     { type: "U8",  enum: "SStatus",  doc: "PL monitoring status according to SStatus enum. It's determined based on whether the PL is responding to OBC pings.", }
+
+      hk_tm_save_suppressed:      { type: "U8",  enum: 'Bool', doc: "Returns whether the storage of reports is being done. See hk_tm_save_period config.", }
+      hk_tm_transmit_suppressed:  { type: "U8",  enum: 'Bool', doc: "Returns whether the transmission/broadcast (via radio) of reports is being done. See hk_tm_transmit_period config.", }
+      hk_tm_round_save_count:     { type: "U32", enum: Null,   doc: "Number for data save collection rounds performed since boot",                         }
+      hk_tm_round_forward_count:  { type: "U32", enum: Null,   doc: "Number for data forward collection rounds performed since boot",                      }
+      hk_tm_round_transmit_count: { type: "U32", enum: Null,   doc: "Number for data transmit collection rounds performed since boot",                     }
+      hk_tm_data_saved_count:     { type: "U32", enum: Null,   doc: "Number for data reports or vars stored since boot",                                   }
+      hk_tm_data_forwarded_count: { type: "U32", enum: Null,   doc: "Number for data reports or vars forwarded since boot",                                }
+      hk_tm_data_transmit_count:  { type: "U32", enum: Null,   doc: "Number for data reports or vars transmit since boot",                                 }
+      hk_tm_logs_forwarded_count: { type: "U32", enum: Null,   doc: "Number of lagPack messages that have been forwarded (in Normal mode) since boot.",    }
+
+      hk_scm_warmedup:            { type: "U8",  enum: 'Bool', doc: "If the next boot will be a warm boot. A boot is considered to be warm when there has been a previous boot that transitioned to Safe mode. ", }
+      hk_scm_mode_change_ot:      { type: "U32", enum: Null,   doc: "Timestamp (in OBC time) of when entered current mode", }
+
+      comms_last_pet:             { type: "U32", enum: Null, doc: "Time_ot when the most recent GS pet was performed.", }
+      comms_last_sc_reset:        { type: "U32", enum: Null, doc: "Time_ot when the last SC reset was performed caused by absence of a GS pet.", }
+      comms_first_boot:           { type: "U32", enum: Null, doc: "Time_ot when OBC 1st booted which is the same as when the last factory reset was performed.", }
+      comms_last_ttc_reset:       { type: "U32", enum: Null, doc: "Time_ot when last TTC reboot was performed.", }
+      comms_last_ttc_sync:        { type: "U32", enum: Null, doc: "Time_ot when last TTC config sync was performed.", }
+
+      <<: *_ifw_data
+
+    reports:
+      sensor_readings:
+        members:
+          - gyro_x
+          - gyro_y
+          - gyro_z
+          - mag_B_x
+          - mag_B_y
+          - mag_B_z
+          - sunsensor_xplus
+          - sunsensor_xminus
+          - sunsensor_yplus
+          - sunsensor_yminus
+          - sunsensor_zplus
+
+      adcs_quat:
+        members:
+          - adcs_quat_x
+          - adcs_quat_y
+          - adcs_quat_z
+          - adcs_quat_w
+
+      adcs_bias:
+        members:
+          - adcs_bias_x
+          - adcs_bias_y
+          - adcs_bias_z
+
+      adcs_dbg:
+        members:
+          - adcs_gyro_x
+          - adcs_gyro_y
+          - adcs_gyro_z
+          - adcs_mag_B_x
+          - adcs_mag_B_y
+          - adcs_mag_B_z
+          - adcs_sunsensor_xplus
+          - adcs_sunsensor_xminus
+          - adcs_sunsensor_yplus
+          - adcs_sunsensor_yminus
+          - adcs_sunsensor_zplus
+          - adcs_dutycycle_x
+          - adcs_dutycycle_y
+          - adcs_dutycycle_z
+
+      # COMMS
+      uart:
+        members:
+          - uart_tx_bytes
+          - uart_rx_bytes
+
+      top:
+        members:
+          # - top_tx_msgs
+          - top_tx_msgs_data
+          # - top_tx_errs
+          # - top_tx_timeouts
+          # - top_rx_msgs
+          - top_rx_msgs_data
+          # - top_rx_errs
+
+      csp:
+        members:
+          - csp_tx_msgs
+          - csp_tx_bytes
+          - csp_rx_msgs
+
+      # rdp:
+      #   members:
+      #     - rdp_state
+      #     - rdp_tx_bytes
+      #     - rdp_tx_bytes_data
+      #     - rdp_tx_msgs
+      #     - rdp_tx_msgs_data
+      #     - rdp_tx_resends
+      #     - rdp_rx_bytes
+      #     - rdp_rx_bytes_data
+      #     - rdp_rx_msgs
+      #     - rdp_rx_msgs_data
+      #     - rdp_rx_dups
+      #     - rdp_rx_out_of_order
+
+      coms:
+        members:
+          - uart
+          - top
+          - csp
+          # - rdp
+          # - ss
+
+      hk_mon_ttc:
+        members:
+          - hk_mon_ttc_liveliness
+          - hk_mon_ttc_next_reset
+          - hk_mon_ttc_num_resets
+          - hk_mon_ttc_status
+
+      hk_mon_com:
+        members:
+          - hk_mon_com_liveliness
+          - hk_mon_com_next_reset
+          - hk_mon_com_num_resets
+          - hk_mon_com_status
+
+      hk_mon_eps:
+        members:
+          - hk_mon_eps_liveliness
+          - hk_mon_eps_next_reset
+          - hk_mon_eps_num_resets
+          - hk_mon_eps_status
+
+      hk_mon_pl:
+        members:
+          - hk_mon_pl_liveliness
+          - hk_mon_pl_next_reset
+          - hk_mon_pl_num_resets
+          - hk_mon_pl_status
+
+      hk_mon:
+        members:
+          - hk_mon_ttc
+          - hk_mon_com
+          - hk_mon_eps
+          - hk_mon_pl
+
+      hk_tm:
+        members:
+          - hk_tm_save_suppressed
+          - hk_tm_transmit_suppressed
+          - hk_tm_round_save_count
+          - hk_tm_round_forward_count
+          - hk_tm_round_transmit_count
+          - hk_tm_data_saved_count
+          - hk_tm_data_forwarded_count
+          - hk_tm_data_transmit_count
+          - hk_tm_logs_forwarded_count
+
+      # hk_scmode:
+      #   members:
+      #     - hk_scm_warmedup
+      #     - hk_scm_mode_change_ot
+
+      hk_master:
+        members:
+          - hk_part_reports_used
+          - hk_part_logs_used
+          - hk_mon
+          - hk_tm
+          - hk_scmode
+
+      # tm_long:
+      #   members:
+      #     - temperature
+      #     - temperature1
+
+      # tm_short:
+      #   members:
+      #     - current_gyro
+      #     - current_mag
+      #     - hk_mon_ttc_status
+      #     - hk_mon_com_status
+      #     - hk_mon_eps_status
+      #     - hk_mon_pl_status
+      #     - time_boot
+      #     - eps_pets_done
+
+      # tm_periodic:
+      #   members:
+      #     - current_gyro
+      #     - current_mag
+      #     - hk_mon_ttc_status
+      #     - hk_mon_com_status
+      #     - hk_mon_eps_status
+      #     - hk_mon_pl_status
+      #     - log_countW
+      #     - log_countE
+      #     - log_countF
+
+      # tm_both:
+      #   members:
+      #     - tm_long
+      #     - tm_short
+
+      tm_health:
+        members:
+          - time
+          - hk_mon
+          - hk_tm
+          - hk_scmode
+          - ifw
+
+      <<: *_ifw_reports
+
+      flight_broadcast:
+        members:
+          - time
+          - hk_scmode
+          - adcs_state
+          - adcs_gyro_x
+          - adcs_gyro_y
+          - adcs_gyro_z
+          - adcs_mag_B_x
+          - adcs_mag_B_y
+          - adcs_mag_B_z
+          - adcs_quat
+          - adcs_sunsensor_xplus
+          - adcs_sunsensor_xminus
+          - adcs_sunsensor_yplus
+          - adcs_sunsensor_yminus
+          - adcs_sunsensor_zplus
+          - temperature
+          - temperature1
+          - hk_mon_ttc_status
+          - hk_mon_eps_status
+          - hk_mon_com_status
+          - hk_mon_pl_status
+
+      flight_pass:
+        members:
+          - time_boot
+          - hk_scmode
+          - hk_mon_ttc_status
+          - hk_mon_eps_status
+          - hk_mon_com_status
+          - hk_mon_pl_status
+          - adcs_state
+          - adcs_ang_vel_magn
+          - adcs_sat_updates_left
+          - adcs_sat_updates_time_left
+          - adcs_sun_updates_left
+          - adcs_sun_updates_time_left
+
+    enums:
+      SStatus:
+        cgen: True
+        enum:
+          'OFF': 0
+          'BOOTING': 1
+          'UNRESPONSIVE': 2
+          'ON': 3
+          'SHUTINGDOWN': 4
+          'IGNORE': 5
+
+      SSMode:
+        cgen: True
+        enum:
+          'ON': 0 # Always tries to keep the SS on.
+          'ON_IF_INIT_OR_NORMAL': 5 # Tries to keep the SS on if in normal or init modes.
+          'ON_IF_NORMAL': 1 # Tries to keep the SS on if in normal mode.
+          'OFF': 2 # Keeps the SS off for all modes.
+          'MONITOR': 3 # Tracks responsiveness of a SS but doesn't perform resets.
+          'IGNORE': 4 # The SS is ignored by the OBC.
+
+      ForwardMode:
+        cgen: True
+        enum:
+          'ON': 0 # The OBC stores and always forwads the collected telemetry data to another SS (specified in config hk_tm_forward_addr).
+          'ON_IF_NORMAL': 1 # The OBC stores the collected telemetry data and oly forwards it to another SS in Normal mode (specified in config hk_tm_forward_addr).
+          'OFF': 2 # The OBC stores the collected telemetry data but never forwards it to another SS.
+
+      TTConfOperation:
+        cgen: True
+        enum:
+          'SRC': 0
+          'DST': 1
+          'LPL': 2
+          'MODE': 3
+          'MODULATION': 4
+          'NONE': 5
+          '_NUM': 6
+
+      TTCModeControl:
+        cgen: True
+        enum:
+          'API': 0 # i.e. regular mode were calls to serviceUART_ttconfChangeMode() change it as indented
+          'FORCE_SAFE': 1
+          'FORCE_NORMAL': 2
+
+      ADCSState:
+        cgen: True
+        enum:
+          'INIT': 0
+          'OFF': 1
+          'IDLE': 2
+          'DETUMBLING': 3
+          'POINTING': 4
+          'FAIL': 5
+          'HITL': 6
+
+      ADCSFn:
+        cgen: True
+        enum:
+          'NONE': 0
+          'ned2ecef': 1
+          'eci2ecef': 2
+          'ecef2eci': 3
+          'ecef2sph': 4
+          'earthECIE_2_sunECI': 5
+          'position_determination_Sun': 6
+          'quaternion_rotation': 7
+          'rotation_matrix_to_quaternion': 8
+          'triad': 9
+          'determine_sun_direction': 10
+          'compute_attitude_estimation': 11
+          'compute_bdot_control': 12
+          'compute_pointing_control': 13
+          'position_determination': 14
+          'MagFieldComputation': 15
+
+
+  TTC:
+    addr: 2
+
+    data:
+      ax25_tx_bytes:         { type: "U32",   doc: "Number of bytes encoded with AX25." }
+      ax25_tx_msgs:          { type: "U32",   doc: "Number of messages encoded with AX25." }
+      ax25_tx_errs:          { type: "U32",   doc: "Number of errors (messages) in AX25 encoding." }
+      ax25_rx_bytes:         { type: "U32",   doc: "Number of bytes decoded with AX25." }
+      ax25_rx_msgs:          { type: "U32",   doc: "Number of messages decoded with AX25." }
+      ax25_rx_errs:          { type: "U32",   doc: "Number of errors (messages) in AX25 decoding." }
+      ax25_remote_cs:        { type: "VDATA", doc: "Callsign of the last remote received msg (only changes if CS changes)." }
+
+      uart_rx_bytes:         { type: "U32",   doc: "Number of bytes received on the UART (OBC) interface." }
+      uart_tx_bytes:         { type: "U32",   doc: "Number of bytes transmitted on the UART (OBC) interface." }
+
+      spi_bytes:             { type: "U32",   doc: "Number of bytes transmitted on the SPI (COM) interface." }
+
+      modem_tx_bytes:        { type: "U32",  doc:  "Number of bytes sent to modulation." }
+      modem_tx_msgs:         { type: "U32",  doc:  "Number of messages sent to modulation." }
+      modem_rx_bytes:        { type: "U32",  doc:  "Number of bytes received from demodulation." }
+      modem_rx_msgs:         { type: "U32",  doc:  "Number of messages received from demodulation." }
+
+      rssi_agc_inst:         { type: "U16",   doc: "RSSI at codec level (instantaneous value)." }
+      rssi_agc_last:         { type: "U16",   doc: "RSSI at codec level (last msg)."}
+      rssi_mixer:            { type: "U16",   doc: "RSSI at mixer level." }
+
+      gain_tx_if_mixer:      { type: "U16",   doc: "Gain of the TX IF mixer." }
+      synth_lock_rx:         { type: "U8",    doc: "Lock status of the TX synthesizer. 0 is unlocked, 1 is locked." }
+      synth_lock_tx:         { type: "U8",    doc: "Lock status of the RX synthesizer. 0 is unlocked, 1 is locked." }
+
+      current_tx:            { type: "U16",   doc: "Current consumption of TX (without PA)." }
+      current_tx_pa:         { type: "U16",   doc: "Current consumption of TX (only PA)." }
+      current_rx:            { type: "U16",   doc: "Current consumption of RX." }
+
+      antenna_switch_status: { type: "U8",    doc: "Comms data and beacon share the same channel. Whether the antenna is currently being used for comms (0) or for beacon (1)." }
+
+      error_status:          { type: "U16",   doc: "TTC Error status bit field (most significant bit first): UARTError; SPIError; I2CError; ModemError; CodecError; I2CMuxError; TXSynthError; RXSynthError; TXMixerError; TXDACError; RXDACError; FlashError; FirmwareError; Dummy1; Dummy2; Dummy3." }
+      firmware_version:      { type: "U32",   doc: "Installed Firmware Version."}
+      hardware_version:      { type: "U8",    doc: "Modem Hardware Version of this board."}
+      board_id:              { type: "U8",    doc: "Modem Board ID." }
+      carrier_sense:         { type: "U8",    doc: "If TTC RX has carrier detected."}
+      deployed:              { type: "U8",    doc: "Bitfield of which ISIS switches are on/off. 1 means on. 0 means off. Since there are 4 switches, only the variable's 4 LSBs (bit 0 to bit 3) are used. The antenna is fully deployed when all of the 4 swicthes are activated, i.e. deployed = 0x0F = 15. Bit 3: ANT2 (Y-) status. Bit 2: ANT1 (X+) status. Bit 1: ANT4 (Y+) status. Bit 0: ANT3 (X-) status."}
+      was_deploy_sent:       { type: "U8",    doc: "Debug var which tells us if a deploy cmd to the TTC's antenna has been issued. Deploy cmds to the TTC antenna can only be sent via the TTC (since it's the only SS with access to the antenna), however they can be issue by other SSs. The variable is a bitfield in which diffrent bits corresponds to diffrent possible scenarios in which the TTC sends a deployment cmd to the antenna. The 4 different scenarios are: Deploy cmd was received via INCP (0000 0001); Deploy cmd was received via UART (0000 0010); Deploy cmd was received via HPC (0000 0100); The Init time in the TTC expired and a deploy cmd was issued by the TTC itself (0000 1000). The 4 MSBs are not used."}
+
+      synth_relock_rx_cnt:   { type: "U16",   doc: "RX Synth relock counts." }
+      synth_relock_tx_cnt:   { type: "U16",   doc: "TX Synth relock counts." }
+
+      temp_adm:              { type: "U16",    doc: "ISIS antenna temperature value from the 10-bit ADC, hence may vary between 0 and 1023. To convert to Celcius please refer to the ISIS antenna user manual. When value is 1, may mean error." }
+
+
+    reports:
+      tm_short:
+        members:
+          - ax25_rx_bytes
+          - ax25_rx_msgs
+          - ax25_tx_bytes
+          - ax25_tx_msgs
+          - current_rx
+          - current_tx
+          - rssi_agc_inst
+          - rssi_agc_last
+
+      tm_periodic:
+        members:
+          - ax25_rx_bytes
+          - ax25_rx_msgs
+          - ax25_tx_bytes
+          - ax25_tx_msgs
+          - current_rx
+          - current_tx
+          - rssi_agc_inst
+          - rssi_agc_last
+          - error_status
+          - time_boot
+
+      flight_tm:
+        members:
+          - rssi_agc_inst
+          - rssi_agc_last
+          - rssi_mixer
+
+      flight_broadcast:
+        members:
+          - time_boot
+          - hk_scmode
+          - ax25_tx_msgs
+          - ax25_rx_msgs
+          - antenna_switch_status
+          - error_status
+          - carrier_sense
+          - temp_adm
+
+      flight_pass:
+        members:
+          - time_boot
+          - hk_scmode
+          - deployed
+          - error_status
+
+  COM:
+    addr: 3
+
+    data:
+      spi_tx_bytes:    { type: "U32",   doc: "Total number of bytes sent to the SPI bus (communication interface with the TTC)." }
+      spi_rx_bytes:    { type: "U32",   doc: "Total number of bytes received in the SPI bus (communication interface with the TTC)." }
+      ax25_tx_bytes:   { type: "U32",   doc: "Number of bytes encoded with AX25." }
+      ax25_tx_msgs:    { type: "U32",   doc: "Number of messages encoded with AX25." }
+      ax25_tx_errs:    { type: "U32",   doc: "Number of errors (messages) in AX25 encoding." }
+      ax25_rx_bytes:   { type: "U32",   doc: "Number of bytes decoded with AX25." }
+      ax25_rx_msgs:    { type: "U32",   doc: "Number of messages decoded with AX25." }
+      ax25_rx_errs:    { type: "U32",   doc: "Number of errors (messages) in AX25 decoding." }
+      ax25_rx_flags:   { type: "U32",   doc: "Total number of flags received. A flag is a 0x7E byte which is used to wake the TTC SS from low-power listening." }
+      ax25_remote_cs:  { type: "VDATA", doc: "Callsign of the last remote received msg (only changes if CS changes)" }
+
+      csp_tx_msgs:     { type: "U32",   doc: "Number of radio messages sent with the CubeSat Protocol (CSP) layer." }
+      csp_tx_bytes:    { type: "U32",   doc: "Number of bytes worth of radio messages sent with the CubeSat Protocol (CSP) layer." }
+      csp_rx_msgs:     { type: "U32",   doc: "Number of radio messages received with the CubeSat Protocol (CSP) layer." }
+      csp_rx_bytes:    { type: "U32",   doc: "Number of bytes worth of radio messages received with the CubeSat Protocol (CSP) layer." }
+
+      <<: *_rdp_data
+
+      # DataWarehousing
+      dwh_tm_entries:   { type: "U32",  doc: "Total number of stored telemetry report entries." }
+      dwh_tm_bytes:     { type: "U32",  doc: "Total size in bytes of telemetry report entries. (including the file header with the ss, ts, and id)"  }
+      dwh_logs_entries: { type: "U32",  doc: "Total number of stored log messages." }
+      dwh_logs_bytes:   { type: "U32",  doc: "Total size of stored log messages." }
+      dwh_adsb_entries: { type: "U32",  doc: "Total number of stored adsb msgs." }
+      dwh_adsb_bytes:   { type: "U32",  doc: "Total size of stored adsb msg." }
+
+      dwh_write_files:  { type: "U32", doc:   "Total number of writen files." }
+      dwh_write_bytes:  { type: "U32", doc:   "Total size of written files (including DWH file header)." }
+
+      dwh_faults_frams: { type: "U8", doc:  "Number of FRAMs detected to be faulty or otherwise not working." }
+      dwh_faults_srams: { type: "U8", doc:  "Number of SRAMs detected to be faulty or otherwise not working." }
+      dwh_state_fram0:  { type: "U8", enum: "dwhBankState", doc: "State (according to the dwhBankState enum) of the first FRAM bank. A bank is made-up of 2 FRAM chips." }
+      dwh_state_fram1:  { type: "U8", enum: "dwhBankState", doc: "State (according to the dwhBankState enum) of the second FRAM bank. A bank is made-up of 2 FRAM chips." }
+      dwh_state_fram2:  { type: "U8", enum: "dwhBankState", doc: "State (according to the dwhBankState enum) of the third FRAM bank. A bank is made-up of 2 FRAM chips." }
+      dwh_state_fram3:  { type: "U8", enum: "dwhBankState", doc: "State (according to the dwhBankState enum) of the fourth FRAM bank. A bank is made-up of 2 FRAM chips." }
+      dwh_state_sram0:  { type: "U8", enum: "dwhBankState", doc: "State (according to the dwhBankState enum) of the first SRAM bank. A bank is made-up of 2 SRAM chips." }
+      dwh_state_sram1:  { type: "U8", enum: "dwhBankState", doc: "State (according to the dwhBankState enum) of the second SRAM bank. A bank is made-up of 2 SRAM chips." }
+      fram_current:     { type: "U16", doc: "Current being drawn by the FRAM chips (in mA)." }
+      sram_current:     { type: "U16", doc: "Current being drawn by the SRAM chips (in mA)." }
+
+      <<: *_ifw_data
+
+      test_str16:       { type: "S16", doc: "Returns string (for testing purposes)." }
+
+
+    reports:
+      spi:
+        members:
+          - spi_tx_bytes
+          - spi_rx_bytes
+
+      ax25:
+        members:
+          - ax25_tx_bytes
+          - ax25_tx_msgs
+          - ax25_tx_errs
+          - ax25_rx_bytes
+          - ax25_rx_msgs
+          - ax25_rx_errs
+          - ax25_rx_flags
+
+      csp:
+        members:
+          - csp_tx_msgs
+          - csp_tx_bytes
+          - csp_rx_msgs
+          - csp_rx_bytes
+
+      <<: *_rdp_reports
+
+      coms:
+        members:
+          - spi
+          - ax25
+          - csp
+          - rdp
+          - ss
+
+      dwh:
+        members:
+          - dwh_data
+          - dwh_banks
+
+      dwh_data:
+        members:
+          - dwh_tm_entries
+          - dwh_tm_bytes
+          - dwh_logs_entries
+          - dwh_logs_bytes
+          - dwh_adsb_entries
+          - dwh_adsb_bytes
+          - dwh_write_files
+          - dwh_write_bytes
+
+      dwh_banks:
+        members:
+          - dwh_state_fram0
+          - dwh_state_fram1
+          - dwh_state_fram2
+          - dwh_state_fram3
+          - dwh_state_sram0
+          - dwh_state_sram1
+
+      tm_long:
+        members:
+          - ax25_tx_msgs
+          - ax25_tx_bytes
+          - ax25_rx_msgs
+          - ax25_rx_bytes
+          - dwh_tm_entries
+          - dwh_logs_entries
+          - dwh_adsb_entries
+
+      tm_health:
+        members:
+          - time
+          - hk_scmode
+          - ifw
+
+      flight_broadcast:
+        members:
+          - time_boot
+          - hk_scmode
+          - ax25_tx_msgs
+          - ax25_rx_msgs
+
+      flight_pass:
+        members:
+          - time_boot
+          - hk_scmode
+          - dwh_faults_frams
+          - dwh_faults_srams
+
+      <<: *_ifw_reports
+
+    enums:
+      dwhPartID:
+        doc: Identifiers for each of the available partitions in the COM's datawarehousing
+        cgen: True
+        enum:
+          reportsxx: 25 # break in order is to preserve backwards compatibly.
+          logsxx:    26 # altought iy most likely isn't needed.
+          adsbxx:    27 # ¯\_(ツ)_/¯
+
+          reports0x: 0
+          reports1x: 1
+          logs0x:    2
+          logs1x:    3
+          adsb0x:    4
+          adsb1x:    5
+
+          reports00: 6
+          reports01: 7
+          reports02: 8
+          reports03: 9
+          reports10: 10
+          reports11: 11
+
+          logs00:    12
+          logs01:    13
+          logs02:    14
+          logs03:    15
+          logs10:    16
+          logs11:    17
+
+          adsb00:    18
+          adsb01:    19
+          adsb02:    21
+          adsb03:    22
+          adsb10:    23
+          adsb11:    24
+
+          END:       28
+
+      dwhBankID:
+        doc: must match dwhBankID_e in dwh.h
+        cgen: True
+        enum:
+          fram0: 0
+          fram1: 1
+          fram2: 2
+          fram3: 3
+
+          sram0: 4
+          sram1: 5
+
+          NONE: 6
+
+      dwhBankGroupID:
+        doc: ''
+        cgen: True
+        enum:
+          frams: 0
+          srams: 1
+
+      dwhBankState:
+        doc: ''
+        cgen: True
+        enum:
+          'OFF': 0
+          'ON': 1
+          'FAIL': 2
+          'DIAG_OK': 3
+          'DIAG_PEND': 4
+          'DIAG_CHECKING': 5
+
+
+      dwhStoreMode:
+        doc: |
+          Possible modes for how files are to be stored.
+
+          In Round Robin, each available partition (of that data type) accepts
+          an equal amount of files sequently.
+
+          In Group Copy, inside each bank group the files are stored in round
+          robin fashin over the partitions but each file is stored has one copy
+          stored in the frams and another in the srams. When downloading the
+          data, file dupplicates are skipped.
+
+        cgen: True
+        enum:
+          'ROUND_ROBIN': 0
+          'GROUP_COPY': 1
+
+
+  EPS:
+    addr: 4
+
+    data:
+      solarx_voltage:       { type: "I16", doc: "Voltage at the input of the X+/X- solar pannel (in mV)." }
+      solarx_current:       { type: "I16", doc: "Current at the input of the X+/X- solar pannel." }
+      solary_voltage:       { type: "I16", doc: "Voltage at the input of the Y+/Y- solar pannel (in mV)." }
+      solary_current:       { type: "I16", doc: "Current at the input of the Y+/Y- solar pannel." }
+      solarz_voltage:       { type: "I16", doc: "Voltage at the input of the Z+/Z- solar pannel (in mV)." }
+      solarz_current:       { type: "I16", doc: "Current at the input of the Z+/Z- solar pannel." }
+      mppt_voltage:         { type: "I16", doc: "Voltage at the MPPT output." }
+      mpptx_current:        { type: "I16", doc: "Current at the MPPT X output." }
+      mppty_current:        { type: "I16", doc: "Current at the MPPT Y output." }
+      mpptz_current:        { type: "I16", doc: "Current at the MPPT Z output." }
+      battery_charge:       { type: "I16", doc: "Average of the last 10 readings for battery's state of charge in percentage format. Created to avoid outliers that may inadvertently change the SC mode." }
+      battery_charge_raw:   { type: "I16", doc: "Current battery's state of charge in percentage format." }
+      charging_status:      { type: "I16", doc: "State of battery packs' balancing feature so that all cells have the same voltage." }
+      battery_voltage:      { type: "I16", doc: "Total battery pack voltage (in mV)." }
+      battery_current:      { type: "I16", doc: "Total battery pack current. Negative currents corresponds to current flowing into the battery (charging it), and vice-versa (in mA)." }
+      battery_heater_en:    { type: "I16", doc: "Whether the heater is on (1) or not (0). It's enabled whenever the average temperature of battery_temperature1, battery_temperature2, battery_temperature3 and battery_temperature4 is lower than heater_l and disabled when it's higher than heater_h." }
+      battery_temperature1: { type: "I16", doc: "Battery pack 1 temperature (in 10^(-2) degress Celsius)." }
+      battery_temperature2: { type: "I16", doc: "Battery pack 2 temperature (in 10^(-2) degress Celsius)." }
+      battery_temperature3: { type: "I16", doc: "Battery pack 3 temperature (in 10^(-2) degress Celsius)." }
+      battery_temperature4: { type: "I16", doc: "Battery pack 4 temperature (in 10^(-2) degress Celsius)." }
+      eps_temperature:      { type: "I16", doc: "Temperature read by the sensor in the EPS' PCB (in 10^(-2) degress Celsius)." }
+      micro_temperature:    { type: "I16", doc: "Temperature read by the sendor in the EPS microcontroller. EPS board 1 variable. Not implmented in EPS board 2." }
+      vcc0_voltage:         { type: "I16", doc: "Voltage being supplied to the TTC subsystem (in mV)." }
+      vcc0_current:         { type: "I16", doc: "Current being drawn by the TTC subsystem (in mA)." }
+      vcc1_voltage:         { type: "I16", doc: "Voltage being supplied to the OBC subsystem (in mV)." }
+      vcc1_current:         { type: "I16", doc: "Current being drawn by the OBC subsystem (in mA)." }
+      vcc2_voltage:         { type: "I16", doc: "Voltage being supplied to the COM subsystem (in mV)." }
+      vcc2_current:         { type: "I16", doc: "Current being drawn by the COM subsystem (in mA)." }
+      vcc3_voltage:         { type: "I16", doc: "Voltage being supplied to the PL subsystem (in mV)." }
+      vcc3_current:         { type: "I16", doc: "Current being drawn by the PL subsystem (in mA)." }
+      buses_voltage:        { type: "I16", doc: "Voltage being supplied to the EPS's main bus (in mV)." }
+      buses_current:        { type: "I16", doc: "Current being drawn by the EPS's main bus (in mA)." }
+      v3_3_voltage:         { type: "I16", doc: "Voltage being supplied to the EPS's 3.3 V bus (in mV)." }
+      v3_3_current:         { type: "I16", doc: "Current being drawn by the EPS's 3.3 V bus (in mA)." }
+      backup_voltage:       { type: "I16", doc: "Voltage being supplied to the EPS's backup line." }
+      backup_current:       { type: "I16", doc: "Current being drawn by the EPS's backup line." }
+      dtx:                  { type: "I16", doc: "MPPT status variable." }
+      dty:                  { type: "I16", doc: "MPPT status variable." }
+      dtz:                  { type: "I16", doc: "MPPT status variable." }
+      low_power_mode:       { type: "U8",  enum: "Bool", doc: "If EPS is in Low Power Mode. This mode was never implemented, hence the EPS should never be in LPM." }
+      obc_pets_recv:        { type: "U32", enum: Null,   doc: 'EPS pet debug var' }
+
+    reports:
+      ALL:
+        members:
+          - solarx_voltage
+          - solarx_current
+          - solary_voltage
+          - solary_current
+          - solarz_voltage
+          - solarz_current
+          - mppt_voltage
+          - mpptx_current
+          - mppty_current
+          - mpptz_current
+          - battery_charge
+          - charging_status
+          - battery_voltage
+          - battery_current
+          - battery_heater_en
+          - battery_temperature1
+          - battery_temperature2
+          - battery_temperature3
+          - battery_temperature4
+          - eps_temperature
+          - micro_temperature
+          - vcc0_voltage
+          - vcc0_current
+          - vcc1_voltage
+          - vcc1_current
+          - vcc2_voltage
+          - vcc2_current
+          - vcc3_voltage
+          - vcc3_current
+          - buses_voltage
+          - buses_current
+          - v3_3_voltage
+          - v3_3_current
+          - backup_voltage
+          - backup_current
+          - dtx
+          - dty
+          - dtz
+
+      tm_long:
+        members:
+          - solarx_voltage
+          - solarx_current
+          - solary_voltage
+          - solary_current
+          - solarz_voltage
+          - solarz_current
+          - battery_charge
+          - charging_status
+          - battery_voltage
+          - battery_current
+          - battery_temperature1
+          - battery_temperature2
+          - battery_temperature3
+          - battery_temperature4
+          - eps_temperature
+          - micro_temperature
+
+      tm_short:
+        members:
+          - vcc0_voltage
+          - vcc0_current
+          - vcc1_voltage
+          - vcc1_current
+          - vcc2_voltage
+          - vcc2_current
+          - vcc3_voltage
+          - vcc3_current
+          - buses_voltage
+          - buses_current
+          - v3_3_voltage
+          - v3_3_current
+
+      tm_periodic:
+        members:
+          - buses_current
+          - buses_voltage
+          - v3_3_current
+          - v3_3_voltage
+          - vcc0_current
+          - vcc0_voltage
+          - vcc1_current
+          - vcc1_voltage
+          - vcc2_current
+          - vcc2_voltage
+          - vcc3_current
+          - vcc3_voltage
+          - battery_charge
+          - battery_current
+          - battery_voltage
+          - charging_status
+          - eps_temperature
+          - battery_temperature1
+          - battery_temperature2
+          - battery_temperature3
+          - battery_temperature4
+          - micro_temperature
+          - log_countW
+          - log_countE
+          - log_countF
+          - time_boot
+
+      tm_both:
+        members:
+          - tm_long
+          - tm_short
+          - obc_pets_recv
+
+      tm_health:
+        members:
+          - time
+          - hk_scmode
+          - battery_charge
+          - charging_status
+          - eps_temperature
+          - battery_temperature1
+          - battery_temperature2
+          - battery_temperature3
+          - battery_temperature4
+          - micro_temperature
+
+      battery_temperatures:
+        members:
+          - battery_temperature1
+          - battery_temperature2
+          - battery_temperature3
+          - battery_temperature4
+
+      battery:
+        members:
+          - battery_charge
+          - battery_charge_raw
+          - battery_voltage
+          - battery_current
+          - battery_heater_en
+
+      flight_tm:
+        members:
+          - vcc0_current
+          - vcc1_current
+          - vcc2_current
+          - vcc3_current
+          - buses_current
+          - v3_3_current
+          - solarx_voltage
+          - solarx_current
+          - solary_voltage
+          - solary_current
+          - solarz_voltage
+          - solarz_current
+          - mppt_voltage
+          - mpptx_current
+          - mppty_current
+          - mpptz_current
+          - time_boot
+
+      flight_broadcast:
+        members:
+          - time_boot
+          - hk_scmode
+          - vcc0_voltage
+          - vcc1_voltage
+          - vcc2_voltage
+          - vcc3_voltage
+          - buses_voltage
+          - v3_3_voltage
+          - battery_voltage
+          - battery_current
+          - battery_heater_en
+          - battery_temperature1
+          - battery_temperature2
+          - battery_temperature3
+          - battery_temperature4
+          - eps_temperature
+          - micro_temperature
+          - battery_charge_raw
+          - battery_charge
+
+      flight_pass:
+        members:
+          - time_boot
+          - hk_scmode
+          - battery_charge
+          - battery_voltage
+          - battery_current
+          - battery_temperature1
+          - battery_temperature2
+          - battery_temperature3
+          - battery_temperature4
+          - eps_temperature
+
+
+      Reset:
+        doc:
+        args:
+          NewState:
+            doc:
+            type: U8
+            enum: 'ModuleState'
+        returns:
+          status:
+            doc:
+            type: U8
+
+      minusOp:
+        doc: ""
+        args:
+          a:
+            doc:
+            type: I32
+          b:
+            doc:
+            type: I32
+        returns:
+          result:
+            doc:
+            type: I32
+
+      wdt_obc_pet:
+        doc: |
+          Pets the pseudo-wdt which reboots the EPS or OBC if it's not petted for more than
+          wdt_self_timeout and wdt_obc_timeout seconds, respectively. These 2 values are
+          EPS configs. This command is meant to be used by the OBC SS in order to inform the
+          EPS that it's working properly.
+        args: {}
+        returns: {}
+
+    diagnostics:
+      0:
+        name: Test_Converter1_5V
+        doc:
+        args:
+        returns:
+          result:
+            doc:
+            type: U8
+
+      1:
+        name: Test_Converter2_3V3
+        doc:
+        args:
+        returns:
+          result:
+            doc:
+            type: U8
+
+      2:
+        name: Test_Converter3_3V3
+        doc:
+        args:
+        returns:
+          result:
+            doc:
+            type: U8
+
+      3:
+        name: Test_MPPT_X
+        doc:
+        args:
+        returns:
+          result:
+            doc:
+            type: U8
+
+      4:
+        name: Test_MPPT_Y
+        doc:
+        args:
+        returns:
+          result:
+            doc:
+            type: U8
+
+      5:
+        name: Test_MPPT_Z
+        doc:
+        args:
+        returns:
+          result:
+            doc:
+            type: U8
+
+      6:
+        name: Test_Battery
+        doc:
+        args:
+        returns:
+          result:
+            doc:
+            type: U8
+
+      7:
+        name: Test_Battery_Charger
+        doc:
+        args:
+        returns:
+          result:
+            doc:
+            type: U8
+
+      8:
+        name: Test_TTC
+        doc:
+        args:
+        returns:
+          result:
+            doc:
+            type: U8
+
+      9:
+        name: Test_OBC
+        doc:
+        args:
+        returns:
+          result:
+            doc:
+            type: U8
+
+      10:
+        name: Test_COM
+        doc:
+        args:
+        returns:
+          result:
+            doc:
+            type: U8
+
+      11:
+        name: Test_PL
+        doc:
+        args:
+        returns:
+          result:
+            doc:
+            type: U8
+
+      12:
+        name: Test_PV
+        doc:
+        args:
+        returns:
+          result:
+            doc:
+            type: U8
+
+    events:
+      FAIL_SOLAR_PANEL_RAIL_X:
+        doc: ''
+      FAIL_SOLAR_PANEL_RAIL_Y:
+        doc: ''
+      FAIL_SOLAR_PANEL_Z:
+        doc: ''
+      FAIL_MPPT_X:
+        doc: ''
+      FAIL_MPPT_Y:
+        doc: ''
+      FAIL_MPPT_Z:
+        doc: ''
+      FAIL_BUCK_2:
+        doc: ''
+      FAIL_BUCK_3:
+        doc: ''
+      FAIL_MUX:
+        doc: ''
+      FAIL_BATTERY_CHARGER:
+        doc: ''
+      FAIL_BATTERY:
+        doc: ''
+      CHARGE_40:
+        doc: ''
+      CHARGE_30:
+        doc: ''
+      CHARGE_15:
+        doc: ''
+      FAIL_OVERLOAD_3V3:
+        doc: ''
+      FAIL_OVERLOAD_TTC:
+        doc: 'Power OUTPUT to TTC fail'
+      FAIL_OVERLOAD_OBC:
+        doc: 'Power OUTPUT to OBC fail'
+      FAIL_OVERLOAD_COM:
+        doc: 'Power OUTPUT to COM fail'
+      FAIL_OVERLOAD_PL:
+        doc: 'Power OUTPUT to PL fail'
+      NORMAL_OP:
+        doc: ''
+      SAFE_OP:
+        doc: ''
+      LOW_OP:
+        doc: ''
+      FAIL_XFEED:
+        doc: ''
+      INITIALIZED:
+        doc: 'signal to OBC that the EPS has initialized and 30 min have past'
+      FAIL_BUCK_1:
+        doc: ''
+      HIGH_POWER_CONSUMPTION_COM:
+        doc: ''
+      HIGH_POWER_CONSUMPTION_TTC:
+        doc: ''
+      HIGH_POWER_CONSUMPTION_OBC:
+        doc: ''
+      HIGH_POWER_CONSUMPTION_PL:
+        doc: ''
+      COM_IS_ON:
+        doc: ''
+      TTC_IS_ON:
+        doc: ''
+      OBC_IS_ON:
+        doc: ''
+      PL_IS_ON:
+        doc: ''
+      V3_3_PW_LIMITED:
+        doc: ''
+      COM_IS_OFF:
+        doc: ''
+      TTC_IS_OFF:
+        doc: ''
+      OBC_IS_OFF:
+        doc: ''
+      PL_IS_OFF:
+        doc: ''
+      OBC_PW_LIMITED:
+        doc: ''
+      TTC_PW_LIMITED:
+        doc: ''
+      PL_PW_LIMITED:
+        doc: ''
+      COM_PW_LIMITED:
+        doc: ''
+      OBC_FAILURE:
+        doc: 'OBC Failure detected'
+
+    enums:
+      ModuleState:
+        cgen: True
+        doc: |
+          Arguments for module state commands.
+        enum:
+          'OFF': 0        # OFF - module is off
+          'ON': 1         # ON - module is on and managed by EPS
+          'ON_MANUAL': 2  # ON_MANUAL - module is on without EPS management
+          'REBOOT': 3     # REBOOT - performs power cycle to the module
+          'CLEAN': 4      # CLEAN - cleans eps module: removes registered errors and sets module in 'ok' state
+
+  PL:
+    addr: 5
+
+    data:
+      pld_bench_batch:      { type: "U32",   doc:  "Number of processed buffers used for computing the benchmarks"}
+      pld_bench_count:      { type: "U32",   doc:  "Number of buffer batches"}
+      pld_bench_avg:        { type: "U32",   doc:  "Avg time (in microsecs) per buffer"}
+      pld_bench_min:        { type: "U32",   doc:  "Minumum time (in microsecs) spent processing a buffer"}
+      pld_bench_max:        { type: "U32",   doc:  "Maximum time (in microsecs) spent processing a buffer"}
+
+      pld_pwr_avg:          { type: "U32",   doc:  "Average sample value"}
+
+      pld_rec_process_fails: { type: "U32",   doc:  "Manchester decoding errors that may result from an err2 or err5 (see docuementation for pld_rec_err2 and pld_rec_err5 INCP variables) and the decoded bits are less than 56 bits (the number of bits that make up smalled Mode-S messages, including ADS-B short squitter messages). In these cases the decoded bits are discarded since they're not enough to make a Mode-S message."}
+      pld_rec_56bits_fails:  { type: "U32",   doc:  "Manchester decoding errors that may result from an err2 or err5 (see docuementation for pld_rec_err2 and pld_rec_err5 INCP variables) and the decoded bits are equal or more than 56 bits (the number of bits that make up and ADS-B short squitter msgs). In these cases the bits are analized to determine if the message is indeed a Mode-S message of 56 bits and is saved depending on the criteria set to save msgs."}
+
+      pld_rec_err0:         { type: "U32",   doc:  "Error when processing samples with low values and the transition (from low to high) comes too early, i.e. in less than 12 samples, since the current low was the inital part of an actual bit (remember that in manchester an actual bit is encoded as a transition, hence 2 manchester 'bits' are a single actual bit). The error counter is iterated, however the algorithm keeps trying to decode the messaage. The transition isn't interpreted as neither a 0 or a 1."}
+      pld_rec_err1:         { type: "U32",   doc:  "Error when processing samples with low values and the transition (from low to high) takes too long, i.e. more than 12 samples. The error counter is iterated, however the samples are interpreted as a bit 1 and the algorithm keeps trying to decode the messaage."}
+      pld_rec_err2:         { type: "U32",   doc:  "Error when processing samples with low values and there's no transition found (from low to high) after going through no_transition_tol samples. The variable 'no_transition_tol' stands for 'no transition tolerance' which must be a value greater or equal to 12 (the maximum number of samples during which there may be no transitions). The error counter is iterated and the algorith stops trying to decodee the message. If the number of bits already decoded is greater or equal to 56, the decoded information may be a short squitter ADS-B message."}
+      pld_rec_err3:         { type: "U32",   doc:  "Same as pld_rec_err0 but when processing samples with high values and looking for a transition from high to low."}
+      pld_rec_err4:         { type: "U32",   doc:  "Same as pld_rec_err1 but when processing samples with high values and looking for a transition from high to low. In this case the samples are interpreted as a bit 0."}
+      pld_rec_err5:         { type: "U32",   doc:  "Same as pld_rec_err2 but when processing samples with high values and looking for a transition from high to low."}
+
+      adsb_msg:             { type: "VDATA", doc:  "Last interpreted ADS-B message by PL decoder." }
+      adsb_msg_test:        { type: "VDATA", doc:  "ADS-B message tesst msg (0x0102(...)0D0E with 14 bytes)." }
+
+      pld_overruns:         { type: "U32",   doc:  "Counter of times the buffers were deleted due to being too slow processing them."}
+      pld_preambles:        { type: "U32",   doc:  "Number of bit seuqences which were interpreted as possible Mode-S preambles."}
+      pld_mode_s_crcfail:   { type: "U32",   doc:  "Number of ADS-B messages with invalid CRCs. Only ADS-B messages may have their CRCs checked. For other Mode-S messages, the existant counters are iterated, however, a CRC check is never done."}
+
+      pld_mode_s_df11:      { type: "U32",   doc:  "Number of received ADS-B messages with downlink format 11 (short squitters) since the last PL boot."}
+      pld_mode_s_df17:      { type: "U32",   doc:  "Number of received ADS-B messages with downlink format 17 (extended squitters) since the last PL boot."}
+      pld_mode_s_df18:      { type: "U32",   doc:  "Number of received ADS-B messages with downlink format 18 (extended squitters supplementary) since the last PL boot."}
+      pld_mode_s_dfother:   { type: "U32",   doc:  "Number of received Mode-S messages that are not ADS-B, i.e. their downlink formats are different than 11, 17 or 18."}
+      pld_mode_s_dferror:   { type: "U32",   doc:  "Number of supposed Mode-S messages that have non-existant downlink format numbers."}
+
+      pld_adsb_tc1:         { type: "U32",   doc:  "Number of received ADS-B messages with typecode 1. ADS-B message of type Aircraft ID."}
+      pld_adsb_tc2:         { type: "U32",   doc:  "Number of received ADS-B messages with typecode 2. ADS-B message of type Aircraft ID."}
+      pld_adsb_tc3:         { type: "U32",   doc:  "Number of received ADS-B messages with typecode 3. ADS-B message of type Aircraft ID."}
+      pld_adsb_tc4:         { type: "U32",   doc:  "Number of received ADS-B messages with typecode 4. ADS-B message of type Aircraft ID."}
+      pld_adsb_tc5:         { type: "U32",   doc:  "Number of received ADS-B messages with typecode 5. ADS-B message of type Surface Position."}
+      pld_adsb_tc6:         { type: "U32",   doc:  "Number of received ADS-B messages with typecode 6. ADS-B message of type Surface Position."}
+      pld_adsb_tc7:         { type: "U32",   doc:  "Number of received ADS-B messages with typecode 7. ADS-B message of type Surface Position."}
+      pld_adsb_tc8:         { type: "U32",   doc:  "Number of received ADS-B messages with typecode 8. ADS-B message of type Surface Position."}
+      pld_adsb_tc9:         { type: "U32",   doc:  "Number of received ADS-B messages with typecode 9. ADS-B message of type Airborne Position (with Baro Altitude)."}
+      pld_adsb_tc10:        { type: "U32",   doc:  "Number of received ADS-B messages with typecode 10. ADS-B message of type Airborne Position (with Baro Altitude)."}
+      pld_adsb_tc11:        { type: "U32",   doc:  "Number of received ADS-B messages with typecode 11. ADS-B message of type Airborne Position (with Baro Altitude)."}
+      pld_adsb_tc12:        { type: "U32",   doc:  "Number of received ADS-B messages with typecode 12. ADS-B message of type Airborne Position (with Baro Altitude)."}
+      pld_adsb_tc13:        { type: "U32",   doc:  "Number of received ADS-B messages with typecode 13. ADS-B message of type Airborne Position (with Baro Altitude)."}
+      pld_adsb_tc14:        { type: "U32",   doc:  "Number of received ADS-B messages with typecode 14. ADS-B message of type Airborne Position (with Baro Altitude)."}
+      pld_adsb_tc15:        { type: "U32",   doc:  "Number of received ADS-B messages with typecode 15. ADS-B message of type Airborne Position (with Baro Altitude)."}
+      pld_adsb_tc16:        { type: "U32",   doc:  "Number of received ADS-B messages with typecode 16. ADS-B message of type Airborne Position (with Baro Altitude)."}
+      pld_adsb_tc17:        { type: "U32",   doc:  "Number of received ADS-B messages with typecode 17. ADS-B message of type Airborne Position (with Baro Altitude)."}
+      pld_adsb_tc18:        { type: "U32",   doc:  "Number of received ADS-B messages with typecode 18. ADS-B message of type Airborne Position (with Baro Altitude)."}
+      pld_adsb_tc19:        { type: "U32",   doc:  "Number of received ADS-B messages with typecode 19. ADS-B message of type Airborne Velocities."}
+      pld_adsb_tc20:        { type: "U32",   doc:  "Number of received ADS-B messages with typecode 20. ADS-B message of type Airborne Position (with GNSS Height)."}
+      pld_adsb_tc21:        { type: "U32",   doc:  "Number of received ADS-B messages with typecode 21. ADS-B message of type Airborne Position (with GNSS Height)."}
+      pld_adsb_tc22:        { type: "U32",   doc:  "Number of received ADS-B messages with typecode 22. ADS-B message of type Airborne Position (with GNSS Height)."}
+      pld_adsb_tc23:        { type: "U32",   doc:  "Number of received ADS-B messages with typecode 23. ADS-B message of type Reserved."}
+      pld_adsb_tc24:        { type: "U32",   doc:  "Number of received ADS-B messages with typecode 24. ADS-B message of type Reserved."}
+      pld_adsb_tc25:        { type: "U32",   doc:  "Number of received ADS-B messages with typecode 25. ADS-B message of type Reserved."}
+      pld_adsb_tc26:        { type: "U32",   doc:  "Number of received ADS-B messages with typecode 26. ADS-B message of type Reserved."}
+      pld_adsb_tc27:        { type: "U32",   doc:  "Number of received ADS-B messages with typecode 27. ADS-B message of type Reserved."}
+      pld_adsb_tc28:        { type: "U32",   doc:  "Number of received ADS-B messages with typecode 28. ADS-B message of type Aircraft Status."}
+      pld_adsb_tc29:        { type: "U32",   doc:  "Number of received ADS-B messages with typecode 29. ADS-B message of type Taget State & Status Info."}
+      pld_adsb_tc31:        { type: "U32",   doc:  "Number of received ADS-B messages with typecode 31. ADS-B message of type Aircraft Operation Status."}
+      pld_adsb_tcerror:     { type: "U32",   doc:  "Number of received ADS-B messages with non-existant typecode numbers. By default all ADS-B messages have their CRCs checked and are discarded (i.e. not saved) if the CRC checkcum isn't 0 (CRC is non-valid). However, the CRC check may be bypassed by setting config pld_ignore_crc to true. In this case, there may be ADS-B messages with invalid typecode numbers."}
+
+      pld_adsb_saved:       { type: "U32",   doc:  "Number of ADS-B messages that were saved to another subsystem (most certainly the COM subsystem)."}
+
+      rf_status:            { type: "U8",    enum: Bool,             doc: "Checks if the RF front-end is ON(1) or OFF(0). 2 is returned in case of an error accessing the pin." }
+      mission_state:        { type: "U8",    enum: MissionState,     doc: "Checks the mission's state (MissionState)." }
+      mission_load_state:   { type: "U8",    enum: RemoteArrayState, doc: "Remote Arrays's state machine state for loading mission information (automatic schedule + filters) from the COM SS." }
+      timeot_load_state:    { type: "U8",    enum: TimeOTState,      doc: "Load state for time_ot variable by the PL from the OBC subsystem." }
+      filters_active:       { type: "U8",                            doc: "Number of active filters. There are only 2 filters available (filter by ICAO and typecode), therefore there may only be up to 2 active filters." }
+
+      timeot_attempts:      { type: "U8",    doc: "Number of attempts done to fecth time_ot variable from th OBC SS."}
+      timeot_backoff:       { type: "U32",   doc: "Time (in milliseconds) until next attempt. If the variable was already fecthed (timeot_load_state = TimeOTSate.SYNCED) the backoff time is UINT32_MAX."}
+
+      testra_state:         { type: "U8",    enum: RemoteArrayState, doc: "Remote Arrays's state machine state for testing", }
+
+
+    reports:
+      pld_bench:
+        members:
+          - pld_bench_batch
+          - pld_bench_count
+          - pld_bench_avg
+          - pld_bench_min
+          - pld_bench_max
+
+      pld_pwr:
+        members:
+          - pld_pwr_avg
+
+      pld_rec:
+        members:
+          - pld_rec_process_fails
+          - pld_rec_56bits_fails
+          - pld_rec_err0
+          - pld_rec_err1
+          - pld_rec_err2
+          - pld_rec_err3
+          - pld_rec_err4
+          - pld_rec_err5
+
+      pld_processing:
+        members:
+          - pld_overruns
+          - pld_preambles
+          - pld_mode_s_crcfail
+          - pld_adsb_saved
+          - df_all
+
+      pld:
+        members:
+          - pld_bench
+          - pld_pwr
+          - pld_rec
+          - pld_processing
+
+      pl_mission:
+        members:
+          - rf_status
+          - mission_state
+          - mission_load_state
+          - timeot_load_state
+          - filters_active
+
+      tc_aircraft_id:
+        members:
+          - pld_adsb_tc1
+          - pld_adsb_tc2
+          - pld_adsb_tc3
+          - pld_adsb_tc4
+
+      tc_surface_pos:
+        members:
+          - pld_adsb_tc5
+          - pld_adsb_tc6
+          - pld_adsb_tc7
+          - pld_adsb_tc8
+
+      tc_airborne_pos_baro:
+        members:
+          - pld_adsb_tc9
+          - pld_adsb_tc10
+          - pld_adsb_tc11
+          - pld_adsb_tc12
+          - pld_adsb_tc13
+          - pld_adsb_tc14
+          - pld_adsb_tc15
+          - pld_adsb_tc16
+          - pld_adsb_tc17
+          - pld_adsb_tc18
+
+      tc_airborne_pos_gnss:
+        members:
+          - pld_adsb_tc20
+          - pld_adsb_tc21
+          - pld_adsb_tc22
+
+      tc_reserved:
+        members:
+          - pld_adsb_tc23
+          - pld_adsb_tc24
+          - pld_adsb_tc25
+          - pld_adsb_tc26
+          - pld_adsb_tc27
+
+      tc_all:
+        members:
+          - tc_aircraft_id
+          - tc_surface_pos
+          - tc_airborne_pos_baro
+          - pld_adsb_tc19
+          - tc_airborne_pos_gnss
+          - tc_reserved
+          - pld_adsb_tc28
+          - pld_adsb_tc29
+          - pld_adsb_tc31
+          - pld_adsb_tcerror
+
+      df_all:
+        members:
+          - pld_mode_s_df11
+          - pld_mode_s_df17
+          - pld_mode_s_df18
+          - pld_mode_s_dfother
+          - pld_mode_s_dferror
+
+      tm_health:
+        members:
+          - time
+          - hk_scmode
+          - pl_mission
+
+      flight_tm:
+        members:
+          - time
+          - pld_processing
+          - pl_mission
+
+      flight_broadcast:
+        members:
+          - hk_scmode
+          - time_boot
+          - pl_mission
+
+      flight_pass:
+        members:
+          - time_boot
+          - hk_scmode
+          - mission_state
+          - rf_status
+          - pld_mode_s_df11
+          - pld_mode_s_df17
+          - pld_mode_s_df18
+          - pld_adsb_saved
+          - filters_active
+
+    enums:
+      RFMode:
+        cgen: True
+        doc: |
+          PL's ADS-B RF front-end mode of operation:
+          - ON: Always on;
+          - OFF: Always off;
+          - MISSION: Is either on or off according to mission schedule.
+        enum:
+          'ON': 0
+          'OFF': 1
+          'MISSION': 2
+
+      MissionState:
+        cgen: True
+        doc: |
+          State of the ADS-B mission.
+
+          INIT: Necessary variables to control mission schedule are being loaded
+          OFF: RF is conrolled by mission schedule and it's off.
+          ON: RF is controlled by mission schedule and it's on.
+          ERROR: There was an error.
+          DISABLED: Mission is desabled beacuse rf_mode config has a value different than 3.
+        enum:
+          'INIT': 0
+          'OFF': 1
+          'ON': 2
+          'ERROR': 3
+          'DISABLED': 4
+
+      TimeOTState:
+        cgen: True
+        doc: Load state for time_ot variable requested from the OBC by the PL.
+        enum:
+          'INIT': 0
+          'LOADING': 1
+          'SYNCED': 2
+          'ERROR': 3
+
+      ADSBTypecode:
+        cgen: True
+        doc: Enum to identify ADS-B messages by typecode when using typecode filters.
+        enum:
+          'NONE': 0
+          'AIRCRAFT_ID': 1 # Typecodes 1 to 4
+          'SURFACE_POS': 2 # Typecodes 5 to 8
+          'AIRBORNE_POS_BARO': 3 # Typecodes 9 to 18
+          'AIRBORNE_VEL': 4 # Typecode 19
+          'AIRBORNE_POS_GNSS': 5 # Typecodes 20 to 22
+          'RESERVED': 6 # Typecodes 23 to 27
+          'AIRCRAFT_STATUS': 7 # Typecode 28
+          'TARGET_STATE_STATUS_INFO': 8 # Typecode 29
+          'AIRCRAFT_OP_STATUS': 9  # Typecode 31
+
+  BEACON:
+    addr: 6
+
+    data: {}
+    reports: {}
+    events: {}
+
+
+  GS:
+    addr: 7
+
+    data:
+      ax25_tx_bytes:   { type: "U32", doc:   "" }
+      ax25_tx_msgs:    { type: "U32", doc:   "" }
+      ax25_tx_errs:    { type: "U32", doc:   "" }
+      ax25_rx_bytes:   { type: "U32", doc:   "" }
+      ax25_rx_msgs:    { type: "U32", doc:   "" }
+      ax25_rx_errs:    { type: "U32", doc:   "" }
+      ax25_remote_cs:  { type: "VDATA", doc: "Callsign of the last remote received msg (only changes if CS changes)" }
+
+      csp_tx_msgs:     { type: "U32", doc: "" }
+      csp_tx_bytes:    { type: "U32", doc: "" }
+      csp_rx_msgs:     { type: "U32", doc: "" }
+      csp_rx_bytes:    { type: "U32", doc: "" }
+
+      <<: *_rdp_data
+
+    reports:
+      <<: *_rdp_reports
+
+    events: {}
+      test_s16:
+        type: S16
+        default: 'default'
+        doc: ''
+
+      pld_dbg_mode:
+        type: U8
+        enum: 'Bool'
+        default: 0
+        doc: "Ignore me, only for compilation of PLDecoder unit tests"
+
+
+
+  EGSE:
+    addr: 8
+
+    data: {}
+    reports: {}
+    events: {}
+
+
+  TEST:
+    addr: 9
+
+    data:
+      0: { "name":"test_u8",    "type":"U8" }
+      1: { "name":"test_u16",   "type":"U16" }
+      2: { "name":"test_u32",   "type":"U32" }
+      3: { "name":"test_i8",    "type":"I8" }
+      4: { "name":"test_i16",   "type":"I16" }
+      5: { "name":"test_i32",   "type":"I32" }
+      6: { "name":"test_data",  "type":"VDATA" }
+      7: { "name":"test_str16", "type":"S16" }
+
+    reports:
+      R1:
+        members:
+          - test_u8
+          - test_u16
+          - test_u32
+
+      ReportTest:
+        members:
+          - test_u8
+          - test_u16
+          - test_u32
+          - test_i8
+          - test_i16
+          - test_i32
+
+      ReportE1:
+        members:
+          - ReportE2
+
+      ReportE3:
+        members:
+          - test_u8
+
+      ReportE2:
+        members:
+          - ReportE3
+
+      0:
+        name: test_cmd0
+        doc: ""
+        args:
+          arg_u8:
+            doc: ""
+            type: U8
+          arg_u16:
+            doc: ""
+            type: U16
+          arg_u32:
+            doc: ""
+            type: U32
+        returns:
+          ret_u8:
+            doc: ""
+            type: U8
+          ret_u16:
+            doc: ""
+            type: U16
+
+      1:
+        name: test_cmdVData
+        doc: ""
+        args:
+          arg_data:
+            doc: ""
+            type: VDATA
+        returns: {}
+
+      test_cmdDFld:
+        doc: ""
+        args:
+          arg_dfld:
+            doc: ""
+            type: DVALUE
+        returns:
+          ret_dfld:
+            doc: ""
+            type: DVALUE
+
+      test_str16:
+        doc: ""
+        args:
+          arg:
+            doc: ""
+            type: S16
+        returns:
+          ret:
+            doc: ""
+            type: S16
+
+
+    events:
+      EVENT1:
+        doc: desc1
+        id: 1
+
+      EVENT2:
+        doc: ""
+
+      EVENT3:
+        doc: ""
+        id: 3
+
+    enums:
+      enumTest:
+        cgen: False
+        enum:
+          "Mz": 1
+          "Hyde": 2
+          # "side_effect_function": function
+
+      enumTest2:
+        cgen: True
+        enum:
+          A: 0
+          B: 1
+          C: 2

@@ -1,0 +1,61 @@
+version: '3.8'
+
+services:
+
+  sat_viewer:
+    image: hazcoper/sat_viewer:latest  # Adjust the image name and tag as necessary
+    restart: unless-stopped  # Restart policy to keep the service running
+    network_mode: host
+    command: ./wrapper.sh #--gs-callsign ${GS_CS} --sc-callsign ${SC_CS} --gr-address ${GNURADIO_ADDR} --gr-port ${GNURADIO_PORT}
+    # share the logs folder
+    volumes:
+      - /logs:/logs
+
+  gnuradio_new_nui:
+    image: hazcoper/gnuradio:3.9
+    restart: unless-stopped
+    volumes:
+      - "${HOME}/.Xauthority:/root/.Xauthority:rw"
+      - ./scripts:/scripts
+    privileged: true
+    network_mode: host
+    environment:
+      - DISPLAY
+    command: python3 /scripts/GNU_3_9_RTL.py > /log/gnu_rad 2>&1   # this is the script for rtl-sdr
+    # command: python3 /scripts/GNU_3_9_PLUTO.py > /log/gnu_rad 2>&1   # this is the script for rtl-sdr
+
+  # gnuradio_new_ui:
+  #   image: hazcoper/gnuradio:3.9
+  #   restart: unless-stopped
+  #   volumes:
+  #     - "${HOME}/.Xauthority:/root/.Xauthority:rw"
+  #     - ./scripts:/scripts
+  #   privileged: true
+  #   network_mode: host
+  #   environment:
+  #     - DISPLAY
+  #   command: gnuradio-companion
+
+
+  # gnuradio_nui:
+  #   image: hazcoper/gnuradio:latest  # Adjust the image name and tag as necessary
+  #   restart: unless-stopped  # Restart policy to keep the service running
+  #   volumes:
+  #     - "${HOME}/.Xauthority:/root/.Xauthority:rw"
+  #   privileged: true
+  #   network_mode: host
+  #   environment:
+  #     - DISPLAY
+  #   command: python istsat_radio_v2/AFSK.py > /log/gnu_rad 2>&1
+
+  # gnuradio_ui:
+  #   image: hazcoper/gnuradio:latest
+  #   restart: unless-stopped
+  #   volumes:
+  #     - "${HOME}/.Xauthority:/root/.Xauthority:rw"
+  #   privileged: true
+  #   environment:
+  #     - DISPLAY
+  #   network_mode: host
+  #   command: gnuradio-companion
+

@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+    <title>SmoothViewer</title>
+    <style>
+        .container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+        }
+        .category {
+            margin-bottom: 20px;
+        }
+        .category h2 {
+            margin-bottom: 10px;
+        }
+        .square {
+            border: 1px solid #000;
+            margin: 5px;
+            padding: 10px;
+            width: 280px;
+            height: 120px;
+            text-align: center;
+            font-size: 26px;
+            overflow: auto;
+        }
+    </style>
+</head>
+<body>
+    <h1>Latest packet</h1>
+    <p>Last packet received: <span id="timer">0 seconds ago</span></p>
+    <div id="categories-container"></div>
+
+    <script>
+        let lastPacketTime = null;
+        let lastMessageCounter = 0;
+
+        function fetchData() {
+            fetch('/get_data')
+                .then(response => response.json())
+                .then(data => {
+                    const container = document.getElementById('categories-container');
+                    container.innerHTML = '';
+
+                    for (const category in data) {
+                        if (category === "received_message_counter") continue;
+
+                        const categoryDiv = document.createElement('div');
+                        categoryDiv.className = 'category';
+                        
+                        const categoryTitle = document.createElement('h2');
+                        categoryTitle.textContent = category;
+                        categoryDiv.appendChild(categoryTitle);
+
+                        const subContainer = document.createElement('div');
+                        subContainer.className = 'container';
+
+                        for (const key in data[category]) {
+                            const square = document.createElement('div');
+                            square.className = 'square';
+                            square.innerHTML = `<strong>${key}</strong><br>${data[category][key]}`;
+                            subContainer.appendChild(square);
+                        }
+
+                        categoryDiv.appendChild(subContainer);
+                        container.appendChild(categoryDiv);
+                    }
+
+                    // Update the last packet time
+                    if (data.received_message_counter && parseInt(data.received_message_counter) !== lastMessageCounter) {
+                        lastPacketTime = new Date();
+                        lastMessageCounter = parseInt(data.received_message_counter);
+                    }
+                })
+                .catch(error => console.error('Error fetching data:', error));
+        }
+
+        function updateTimer() {
+            if (lastPacketTime) {
+                const now = new Date();
+                const secondsAgo = Math.round((now - lastPacketTime) / 1000);
+                document.getElementById('timer').textContent = `${secondsAgo} seconds ago`;
+            }
+        }
+
+        setInterval(fetchData, 4000);  // Fetch data every 4 seconds
+        setInterval(updateTimer, 1000);  // Update timer every second
+        window.onload = fetchData;
+    </script>
+</body>
+</html>
