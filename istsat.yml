@@ -15,7 +15,10 @@ _shared: # yaml shared stuff
           - ifw_failed
           - ifw_autolock_in
           - ifw_keys
-          
+
+    cmds: {}
+    configs: {}
+
     enums: &_ifw_enums
       INCPFWError:
         doc: ""
@@ -230,6 +233,9 @@ subsystems:
           - version_minor
           - version_schema_hash
 
+
+    commands: {}
+    configs: {}
     events:
       test:
         doc: Used for testing.
@@ -701,6 +707,10 @@ subsystems:
           - adcs_sun_updates_left
           - adcs_sun_updates_time_left
 
+    commands: {}
+
+    configs: {}
+
     enums:
       SStatus:
         cgen: True
@@ -878,6 +888,11 @@ subsystems:
           - deployed
           - error_status
 
+
+    commands: {}
+
+    configs: {}
+
   COM:
     addr: 3
 
@@ -1016,6 +1031,9 @@ subsystems:
           - dwh_faults_srams
 
       <<: *_ifw_reports
+
+    commands: {}
+    configs: {}
 
     enums:
       dwhPartID:
@@ -1347,41 +1365,7 @@ subsystems:
           - battery_temperature4
           - eps_temperature
 
-
-      Reset:
-        doc:
-        args:
-          NewState:
-            doc:
-            type: U8
-            enum: 'ModuleState'
-        returns:
-          status:
-            doc:
-            type: U8
-
-      minusOp:
-        doc: ""
-        args:
-          a:
-            doc:
-            type: I32
-          b:
-            doc:
-            type: I32
-        returns:
-          result:
-            doc:
-            type: I32
-
-      wdt_obc_pet:
-        doc: |
-          Pets the pseudo-wdt which reboots the EPS or OBC if it's not petted for more than
-          wdt_self_timeout and wdt_obc_timeout seconds, respectively. These 2 values are
-          EPS configs. This command is meant to be used by the OBC SS in order to inform the
-          EPS that it's working properly.
-        args: {}
-        returns: {}
+    commands: {} 
 
     diagnostics:
       0:
@@ -1500,6 +1484,8 @@ subsystems:
           result:
             doc:
             type: U8
+
+    configs: {}
 
     events:
       FAIL_SOLAR_PANEL_RAIL_X:
@@ -1821,6 +1807,9 @@ subsystems:
           - pld_adsb_saved
           - filters_active
 
+    commands: {}
+    configs: {}
+
     enums:
       RFMode:
         cgen: True
@@ -1880,7 +1869,9 @@ subsystems:
 
     data: {}
     reports: {}
+    commands: {}
     events: {}
+    configs: {}
 
 
   GS:
@@ -1905,26 +1896,19 @@ subsystems:
     reports:
       <<: *_rdp_reports
 
+    commands: {}
+
     events: {}
-      test_s16:
-        type: S16
-        default: 'default'
-        doc: ''
-
-      pld_dbg_mode:
-        type: U8
-        enum: 'Bool'
-        default: 0
-        doc: "Ignore me, only for compilation of PLDecoder unit tests"
-
-
+    configs: {}
 
   EGSE:
     addr: 8
 
     data: {}
     reports: {}
+    commands: {}
     events: {}
+    configs: {}
 
 
   TEST:
@@ -1968,58 +1952,7 @@ subsystems:
         members:
           - ReportE3
 
-      0:
-        name: test_cmd0
-        doc: ""
-        args:
-          arg_u8:
-            doc: ""
-            type: U8
-          arg_u16:
-            doc: ""
-            type: U16
-          arg_u32:
-            doc: ""
-            type: U32
-        returns:
-          ret_u8:
-            doc: ""
-            type: U8
-          ret_u16:
-            doc: ""
-            type: U16
-
-      1:
-        name: test_cmdVData
-        doc: ""
-        args:
-          arg_data:
-            doc: ""
-            type: VDATA
-        returns: {}
-
-      test_cmdDFld:
-        doc: ""
-        args:
-          arg_dfld:
-            doc: ""
-            type: DVALUE
-        returns:
-          ret_dfld:
-            doc: ""
-            type: DVALUE
-
-      test_str16:
-        doc: ""
-        args:
-          arg:
-            doc: ""
-            type: S16
-        returns:
-          ret:
-            doc: ""
-            type: S16
-
+    commands: {}
 
     events:
       EVENT1:
@@ -2033,6 +1966,8 @@ subsystems:
         doc: ""
         id: 3
 
+    configs: {}
+    
     enums:
       enumTest:
         cgen: False
