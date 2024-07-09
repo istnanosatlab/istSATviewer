@@ -1,13 +1,12 @@
 ## UPDATE
 
-Intial TLE
+Preliminar TLE
 
+```
 ISTSAT1P
-
 1 98877U 1800100  24191.84137635  .00000000  00000-0  21350-5 0  9999
-
 2 98877  62.0035 161.5763 0012079 242.9188   4.5952 14.96012408    10
-
+```
 
 # istSatViewer
 Simple program that will provide the capability for any user with an SDR to receive and decode messages sent from ISTSat-1. There are two versions, one lighter for Linux users mainly and another using a VM for Windows and Mac OS X users.
