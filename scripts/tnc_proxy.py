@@ -8,16 +8,52 @@ import kiss2 as kiss
 import socket
 import threading
 
+import click
 
-PORT = '/dev/ttyUSB0'
-#TNC PROF ROCHA
-BAUDRATE = 9600
+VERSION = "0.0.1"
+
 
 #TNC PACCOMM  0.77
 # BAUDRATE = 38200
 
 # Add 'D' or 'I' to LOG to change log level
 LOG = 'I'
+
+# KISS Special Characters
+# http://en.wikipedia.org/wiki/KISS_(TNC)#Special_Characters
+# http://k4kpk.com/content/notes-aprs-kiss-and-setting-tnc-x-igate-and-digipeater
+# Frames begin and end with a FEND/Frame End/0xC0 byte
+KISS_FEND = b'\xC0'  # Marks START and END of a Frame
+KISS_FESC = b'\xDB'  # Escapes FEND and FESC bytes within a frame
+
+# Transpose Bytes: Used within a frame-
+# "Transpose FEND": An FEND after an FESC (within a frame)-
+# Sent as FESC TFEND
+KISS_TFEND = b'\xDC'
+# "Transpose FESC": An FESC after an FESC (within a frame)-
+# Sent as FESC TFESC
+KISS_TFESC = b'\xDD'
+
+# "FEND is sent as FESC, TFEND"
+# 0xC0 is sent as 0xDB 0xDC
+KISS_FESC_TFEND = b''.join([KISS_FESC, KISS_TFEND])
+
+# "FESC is sent as FESC, TFESC"
+# 0xDB is sent as 0xDB 0xDD
+KISS_FESC_TFESC = b''.join([KISS_FESC, KISS_TFESC])
+
+# KISS Command Codes
+# http://en.wikipedia.org/wiki/KISS_(TNC)#Command_Codes
+KISS_DATA_FRAME = b'\x00'
+KISS_TX_DELAY = b'\x01'
+KISS_PERSISTENCE = b'\x02'
+KISS_SLOT_TIME = b'\x03'
+KISS_TX_TAIL = b'\x04'
+KISS_FULL_DUPLEX = b'\x05'
+KISS_SET_HARDWARE = b'\x06'
+KISS_RETURN = b'\xFF'
+
+
 
 
 def printi(*args, **kwargs):
@@ -93,40 +129,6 @@ def on_recv_frame(frame):
         sockcli.send(frame)
 
 
-# KISS Special Characters
-# http://en.wikipedia.org/wiki/KISS_(TNC)#Special_Characters
-# http://k4kpk.com/content/notes-aprs-kiss-and-setting-tnc-x-igate-and-digipeater
-# Frames begin and end with a FEND/Frame End/0xC0 byte
-KISS_FEND = b'\xC0'  # Marks START and END of a Frame
-KISS_FESC = b'\xDB'  # Escapes FEND and FESC bytes within a frame
-
-# Transpose Bytes: Used within a frame-
-# "Transpose FEND": An FEND after an FESC (within a frame)-
-# Sent as FESC TFEND
-KISS_TFEND = b'\xDC'
-# "Transpose FESC": An FESC after an FESC (within a frame)-
-# Sent as FESC TFESC
-KISS_TFESC = b'\xDD'
-
-# "FEND is sent as FESC, TFEND"
-# 0xC0 is sent as 0xDB 0xDC
-KISS_FESC_TFEND = b''.join([KISS_FESC, KISS_TFEND])
-
-# "FESC is sent as FESC, TFESC"
-# 0xDB is sent as 0xDB 0xDD
-KISS_FESC_TFESC = b''.join([KISS_FESC, KISS_TFESC])
-
-# KISS Command Codes
-# http://en.wikipedia.org/wiki/KISS_(TNC)#Command_Codes
-KISS_DATA_FRAME = b'\x00'
-KISS_TX_DELAY = b'\x01'
-KISS_PERSISTENCE = b'\x02'
-KISS_SLOT_TIME = b'\x03'
-KISS_TX_TAIL = b'\x04'
-KISS_FULL_DUPLEX = b'\x05'
-KISS_SET_HARDWARE = b'\x06'
-KISS_RETURN = b'\xFF'
-
 
 def rx(sl: Serial):
     read_buffer = bytes()
@@ -196,8 +198,11 @@ def rx(sl: Serial):
             yield f
 
 
-def main():
-    ki = kiss.SerialKISS(port=PORT, speed=BAUDRATE)
+def start(
+        serial_port: str,
+        baudrate: int
+):
+    ki = kiss.SerialKISS(port=serial_port, speed=baudrate)
     ki.start()
 
     sl: Serial = ki.interface
@@ -229,6 +234,24 @@ def main():
         ki.kiss_off()
         ki.stop()
 
+
+
+@click.command()
+@click.option(
+    "--serial-port", type=str, default="/dev/ttyACM0", help="Serial port to talk to tnc. for direwolf use /tmp/kisstnc"
+)
+@click.option(
+    "--baudrate",
+    type=int,
+    default=9600,
+    help="baudrate of the serial port"
+)
+@click.version_option(version=VERSION)
+
+def main(*args, **kwargs):
+    print(args, kwargs)
+    start(*args, **kwargs)
+    
 
 if __name__ == '__main__':
     try:
