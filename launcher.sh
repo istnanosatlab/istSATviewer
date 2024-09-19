@@ -1,34 +1,40 @@
 # Define the config file
 CONFIG_FILE="config"
+CONFIG_FILE="config_tnc_example"
 
 
 # Function to read parameters from the config file
 get_config_value() {
     grep "$1" "$CONFIG_FILE" | awk -F': ' '{print $2}'
+}
 
+# Function to add a prefix to the parameter
+add_prefix() {
+    VALUE=$(get_config_value "$1")
+    if [ -n "$VALUE" ]; then  # Check if VALUE is not empty
+        echo "--$1 $VALUE"
+    fi
 }
 
 # Read gnu radio parameters
 SCRIPT=$(get_config_value "gnuradio_script")
-RX_OFFSET=$(get_config_value "rx_offset")
-GAIN=$(get_config_value "gain")
-
+SERIAL_PORT=$(add_prefix "serial-port")
+BAUD_RATE=$(add_prefix "baud-rate")
+RX_OFFSET=$(add_prefix "rx-offset")
+GAIN=$(add_prefix "gain")
 
 
 # Read satviewer params
-GS_CALLSIGN=$(get_config_value "gs-callsign")
-SC_CALLSIGN=$(get_config_value "sc-callsign")
-GR_ADDRESS=$(get_config_value "gr-address")
-GR_PORT=$(get_config_value "gr-port")
-MOD_CTRL_PORT=$(get_config_value "modulation-controller-port")
-CSV_FOLDER=$(get_config_value "csv-folder")
-
-
-
+GS_CALLSIGN=$(add_prefix "gs-callsign")
+SC_CALLSIGN=$(add_prefix "sc-callsign")
+GR_ADDRESS=$(add_prefix "gr-address")
+GR_PORT=$(add_prefix "gr-port")
+MOD_CTRL_PORT=$(add_prefix "modulation-controller-port")
+CSV_FOLDER=$(add_prefix "csv-folder")
 
 
 # Launch the gnu radio program with the parameters
-gnuradio_command="python3 $SCRIPT > /dev/null &"
+gnuradio_command="python3 $SCRIPT $SERIAL_PORT $BAUD_RATE > /dev/null &"
 echo "Launching gnu radio command: $gnuradio_command"
 eval $gnuradio_command
 
@@ -37,7 +43,7 @@ sleep 5
 
 
 # Launch the satviewer program with the parameters
-satviewer_command="./satExec3_10 --gs-callsign $GS_CALLSIGN --sc-callsign $SC_CALLSIGN --gr-address $GR_ADDRESS --gr-port $GR_PORT --modulation-controller-port $MOD_CTRL_PORT --csv-folder $CSV_FOLDER &"
+satviewer_command="./satExec3_10 $GS_CALLSIGN $SC_CALLSIGN $GR_ADDRESS $GR_PORT $MOD_CTRL_PORT $CSV_FOLDER &"
 echo "Launching satviewer command: $satviewer_command"
 eval $satviewer_command
 

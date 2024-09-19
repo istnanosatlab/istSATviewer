@@ -1,6 +1,8 @@
-#gnu radio parameters
-gnuradio_script: scripts/tnc_proxy.py
-rx_offset: 0
+#gnu radio parameters. Change serial-port to /tmp/kisstnc to use with direwolf
+gnuradio_script: scripts/tnc_wrapper.py
+serial-port: /tmp/kisstnc
+baud-rate: 9600
+rx-offset: 0
 gain: 0
 
 
