@@ -200,9 +200,9 @@ def rx(sl: Serial):
 
 def start(
         serial_port: str,
-        baudrate: int
+        baud_rate: int
 ):
-    ki = kiss.SerialKISS(port=serial_port, speed=baudrate)
+    ki = kiss.SerialKISS(port=serial_port, speed=baud_rate)
     ki.start()
 
     sl: Serial = ki.interface
@@ -241,10 +241,10 @@ def start(
     "--serial-port", type=str, default="/dev/ttyACM0", help="Serial port to talk to tnc. for direwolf use /tmp/kisstnc"
 )
 @click.option(
-    "--baudrate",
+    "--baud-rate",
     type=int,
     default=9600,
-    help="baudrate of the serial port"
+    help="baud rate of the serial port"
 )
 @click.version_option(version=VERSION)
 

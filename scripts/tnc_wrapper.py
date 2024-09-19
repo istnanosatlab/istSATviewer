@@ -57,7 +57,7 @@ def launchTncScript(*args, **kwargs):
     """
 
     # need to launch the tnc script with the correct port
-    os.system(f"python3 scripts/tnc_proxy.py --serial-port {args[0]} --baudrate {args[1]}")
+    os.system(f"python3 scripts/tnc_proxy.py --serial-port {args[0]} --baud-rate {args[1]}")
 
 
 def run_in_thread(target, *args, **kwargs):
@@ -71,7 +71,7 @@ def run_in_thread(target, *args, **kwargs):
 
 def start(
         serial_port: str,
-        baudrate: int
+        baud_rate: int
 ):
     if not checkAudioSink():
         print("\033[91m" + "Error: DirewolfSink not found, exiting..." + "\033[0m")
@@ -89,7 +89,7 @@ def start(
         exit(1)
 
     print("Launching TNC in a separate thread")
-    thread_tnc = run_in_thread(launchTncScript, serial_port, baudrate)
+    thread_tnc = run_in_thread(launchTncScript, serial_port, baud_rate)
 
     print("Done closing everything")
 
@@ -101,10 +101,10 @@ def start(
     "--serial-port", type=str, default="/dev/ttyACM0", help="Serial port to talk to tnc. for direwolf use /tmp/kisstnc"
 )
 @click.option(
-    "--baudrate",
+    "--baud-rate",
     type=int,
     default=9600,
-    help="baudrate of the serial port"
+    help="baud rate of the serial port"
 )
 @click.version_option(version=VERSION)
 
