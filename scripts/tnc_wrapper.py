@@ -28,6 +28,7 @@ def checkAudioSink():
 def launchDirewolf():
     """
     Will launch direwolf with the correct config file
+    If you want to run with a custom audio input, make sure that you change "DireWolfSink.monitor" to the correct audio input
     """
 
     # need to launch direwolf with the correct config file

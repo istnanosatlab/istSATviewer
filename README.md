@@ -60,19 +60,18 @@ The current supported list of SDRs is:
 
 It is also possible to use a conventional HAM Radio through:
 - TNC
+- Virtual TNC (audio playback/radio audio input)
 
 the default script is configured to work with RTL-SDR. To use with PlutoSDR, you jaust have to change the docker-compose.yaml to use the correct script
 the line is commented, so all you have to do is comment the rtl line and uncomment the pluto line
 
 ## TNC support
 
-We have just added TNC support. There is a script called tnc_proxy.py. Which will be the script responsible to communicate with the TNC and send the data to the decoder. Please, make sure that your tnc supports KISS mode.
+This is an alternative way to receive messages from the satellite. It avoid the need of an SDR, therefore it also avoids the need for GNU Radio.
 
-Also make sure that you change in the config file that you desire to use the TNC script and change the gr-port to 6970. 
+In order to use a TNC, there are a few changes that you need to do. The file "config_tnc_example" contains and example for a typicall TNC. Make sure that you change the serial port and baud rate to the correct values.
 
-The last thing that you should check is that in the tnc_proxy.py script you  have the correct serial port selected and the correct baud rate.
-
-Due to the lack of dependencies, if you are running with docker you will need to run the tnc_proxy.py script locally. You just need to make sure that you have python3 installed and run the following commands: (it is recommended that you comment out the gnuradio service in the docker-compose file to avoid conflicts)
+If you are using docker and want to use it with a TNC, to minimize dependencies, you will need to run the tnc_proxy.py script locally. With the following commands:
 
 ```bash
 pip install pyserial
@@ -80,12 +79,49 @@ pip install kiss
 pip install kiss2
 python3 scripts/tnc_proxy.py
 ```
+Please make sure that you also comment out the GNU Radio service in the docker compose file to avoid conflicts.
 
-If you are running in the virtual machine. Please make sure that you change the port and the script in the config file. Make sure that you have passed the usb device to the virtual machine. And make sure that you update the script with the correct serial port and baud rate. After that it should run automatically when you run the launcher.sh script.
+The virtual machine already contains all the files and dependencies needed to run the TNC. Just make sure you update the config file correctly and if you are using a real TNC make sure that you pass the USB device to the virtual machine.
 
 After this everything should run smoothly.
 
 ps: when the tnc_proxy.py script starts, you should see the lights on the tnc blink three times
+
+## Virtual TNC support
+We have just added support for a virtual TNC. The software choosen to perform this task is Direwolf. This software is capable of emulating a TNC and can be used to receive messages from the satellite.
+
+This allows a couple of different scenarios:
+- playback audio recordings from the satellite to try and decode them
+- use the audio output from a radio connected to your computer to try and decode the messages
+- use GQRX + SDR as an alternative way to receive the messages
+
+When the Virtual Machine boots, it will automatically create an audio sink called DireWolfSink. This sink will be the default source for the Direwolf software. To run the software, you just need to choose the correct serial port in the config file (/tmp/kisstnc). The launch script will then auotmatically start the Direwolf, pipe DirewolfSink to Direwolf and launch the decoding software.
+
+### Audio playback
+1. Add the audio file to your virtual machine. 
+2. Open the audio with any audio player
+3. Using a tool like pavucontrol, change the output of the audio player to DireWolfSink
+4. Run the ./launch.sh script
+
+A known  good audio file is included in the repository, you can use it to test the setup.
+
+### GQRX + SDR
+1. Open GQRX and Connect to your SDR
+2. Set the correct frequency and mode (Narrow FM)
+3. Using a tool like pavucontrol change the output of GQRX to DireWolfSink
+4. Run the ./launch.sh script
+
+### Custom audio source
+This could be either a radio connected to your computer or a microphone for example...
+
+To check the available audio sources you can use the following command:
+```
+pactl list sources short 
+```
+
+After you have identified the correct source, you can change the default source. For this you will need to open scripts/tnc_wrapper.py and change the source name (the default name is DireWolfSink.monitor) there are some comments in the script to help guide you
+
+With the selected flags, every 5 seconds Direwolf will print to terminal some informaiton about the audio received (audio level and sample rate). This can be useful to check that Direwolf is actually receiveing the audio. However by default this it piped do /dev/null, so if you are having problems and want to check that everything is okay, you can remove the redirection to /dev/null in the launch.sh script. You might also want to comment out the launch of the decoder and viewing page to make sure nothing is cluttering the terminal.
 
 ## Operational parameters
 
@@ -108,18 +144,3 @@ gnuradio_nui_1  | RuntimeError: Unable to create context
 ```
 
 If you see something similar to this means that the container is not able to access the SDR. There could be many issues that could be causing this. Please check that you have the SDR correctly connected and configured for your computer, make sure that you are using the correct ip or correct port.
-
-
-
-<details>
-para a maquina virtual:
-    meter o script para lancar as coisas
-    meter o ficheiro de configuracao
-    meter um plano de fundo fixe
-    ver o setup de rede para o pluto
-    ver o setup de rede para passar uma porta
-    ver o setup de hardware para passar um usb
-    rever as instrucoes
-    gerar a nova imagem
-    meter a nova imagem no site
-</details>
