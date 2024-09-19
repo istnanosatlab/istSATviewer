@@ -5,6 +5,9 @@
 import os
 import threading
 import time
+import click 
+
+VERSION = "0.0.2"
 
 
 def checkAudioSink():
@@ -32,53 +35,92 @@ def launchDirewolf():
     os.system("parec -d DireWolfSink.monitor | direwolf - -n1 -r 88200 -a5 -p -b16 -B 1200")
 
 
-def checkSerialPort():
+def checkSerialPort(
+        serial_port: str
+):
     """
     Will check to see if DireWold serial port is available
     """
     
     # need to see if the serial port is available
     # serial port is called /tmp/kisstnc
-    if os.path.exists("/tmp/kisstnc"):
+    if os.path.exists(serial_port):
         return True
     else:
         return False 
     
 
-def launchTncScript():
+def launchTncScript(*args, **kwargs):
     """
     Will launch the tnc script with the correct port
     it is expected to be launched from the istsatviewer repo
     """
 
     # need to launch the tnc script with the correct port
-    # port is /tmp/kisstnc
-    os.system("python3 scripts/tnc_proxy.py /tmp/kisstnc")
+    os.system(f"python3 scripts/tnc_proxy.py --serial-port {args[0]} --baudrate {args[1]}")
 
 
-def run_in_thread(target):
+def run_in_thread(target, *args, **kwargs):
     """
     Run a function in a new thread.
     """
-    thread = threading.Thread(target=target)
+    thread = threading.Thread(target=target, args=args, kwargs=kwargs)
     thread.start()
     return thread
 
-if __name__ == '__main__':
+
+def start(
+        serial_port: str,
+        baudrate: int
+):
     if not checkAudioSink():
         print("\033[91m" + "Error: DirewolfSink not found, exiting..." + "\033[0m")
         exit(1)
 
-    print("Launching Direwolf")
-    thread_direwolf = run_in_thread(launchDirewolf)
+    # only launch direwolf if the serial port is /tmp/kisstnc
+    if (serial_port == "/tmp/kisstnc"):
+        print("Launching Direwolf")
+        thread_direwolf = run_in_thread(launchDirewolf)
 
     time.sleep(5)
 
-    if not checkSerialPort():
-        print("\033[91m" + "Error: Serial port not found, exiting..." + "\033[0m")
+    if not checkSerialPort(serial_port):
+        print("\033[91m" + f"Error: Serial port {serial_port} not found, exiting..." + "\033[0m")
         exit(1)
 
     print("Launching TNC in a separate thread")
-    thread_tnc = run_in_thread(launchTncScript)
+    thread_tnc = run_in_thread(launchTncScript, serial_port, baudrate)
 
     print("Done closing everything")
+
+
+
+
+@click.command()
+@click.option(
+    "--serial-port", type=str, default="/dev/ttyACM0", help="Serial port to talk to tnc. for direwolf use /tmp/kisstnc"
+)
+@click.option(
+    "--baudrate",
+    type=int,
+    default=9600,
+    help="baudrate of the serial port"
+)
+@click.version_option(version=VERSION)
+
+def main(*args, **kwargs):
+    print(args, kwargs)
+    start(*args, **kwargs)
+
+if __name__ == '__main__':
+    try:
+        main()
+    except KeyboardInterrupt:
+        print("\033[91m" + "Exiting..." + "\033[0m")
+        exit(1)
+    except Exception as e:
+        print("\033[91m" + "Error: " + str(e) + "\033[0m")
+        exit(1)
+    finally:
+        print("\033[91m" + "Exiting..." + "\033[0m")
+        exit(1)
