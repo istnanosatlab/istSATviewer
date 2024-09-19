@@ -1,6 +1,6 @@
 ## UPDATE
 
-Preliminar TLE
+Preliminary TLE
 
 ```
 ISTSAT1P             
@@ -9,13 +9,13 @@ ISTSAT1P
 ```
 
 # istSatViewer
-Simple program that will provide the capability for any user with an SDR to receive and decode messages sent from ISTSat-1. There are two versions, one lighter for Linux users mainly and another using a VM for Windows and Mac OS X users.
+A simple program that will enable any user with an SDR to receive and decode messages sent from ISTSat-1. There are two versions, one lighter for Linux users mainly and another using a VM for Windows and Mac OS X users.
 
-For Linux it is  distributed as two docker images that will be run using docker-compose. One image is responsible for running GNURADIO and the other image is responsible for running the software that will decode the messages and print the data to the terminal. Docker was chosen in order to facilitate the development process and make it accessible to anyone. After installing Docker and Docker Compose, with just one command you should be receiving messages from the Satellite.
+For Linux it is distributed as two docker images that will be run using docker-compose. One image is responsible for running GNURADIO and the other image is responsible for running the software that will decode the messages and print the data to the terminal. Docker was chosen to facilitate the development process and make it accessible to everyone. After installing Docker and Docker Compose, with just one command you should be receiving messages from the Satellite.
 
 
 # Instructions for Windows and Mac OS
-In Windows and Mac OS, docker does not support easily sharing the host USB device with the containers. To facilitate installation and guarantee future compatibility, we created a virtual machine (VM) that will contain everything you need to receive and decode messages from the satellite.
+In Windows and Mac OS, docker does not support easily sharing the host USB device with the containers. To facilitate installation and guarantee future compatibility, we created a virtual machine (VM) that contains everything you need to receive and decode messages from the satellite.
 
 1. Install [VirtualBox](https://www.virtualbox.org/wiki/Downloads)
 2. Download the ova file from [here](https://drive.google.com/drive/folders/1FTXfsTDHjU9etDDFKRuVthNt_m1gdBOq?usp=sharing)
@@ -32,7 +32,7 @@ Now you should have everything you need to start receiving messages from the sat
 ./launcher.sh
 ```
 
-This will automatically launch the gnuradio script, the decoder, and the server. The default script is configured to work with RTL-SDR. To use PlutoSDR, you need to change the script name in the config file
+This will automatically launch the GNU Radio script, the decoder, and the web server. The default script is configured to work with RTL-SDR. To use PlutoSDR, you need to change the script name in the config file
 
 The config file contains the default values that will be used to launch the gnu radio script and the decoder. If you want to change any of the default values, you can edit this file to suit your needs.
 
@@ -48,13 +48,13 @@ The config file contains the default values that will be used to launch the gnu 
 5. run ```docker compose up```
     - if you installed docker compose via apt, it probably installed V1, meaning that you have to run ```docker-compose up``` instead
 
-After this you should any received messages will be shown in your terminal
+After this you should any received messages will be shown in your terminal.
 
 
 
 ## Currently Supported Radios
 
-The current supported list of SDRs is:
+Currently supported SDRs:
 - PlutoSDR
 - RTL-SDR
 
@@ -62,14 +62,14 @@ It is also possible to use a conventional HAM Radio through:
 - TNC
 - Virtual TNC (audio playback/radio audio input)
 
-the default script is configured to work with RTL-SDR. To use with PlutoSDR, you jaust have to change the docker-compose.yaml to use the correct script
+The default script is configured to work with RTL-SDR. To use with PlutoSDR, you just have to change the docker-compose.yaml to use the correct script
 the line is commented, so all you have to do is comment the rtl line and uncomment the pluto line
 
 ## TNC support
 
-This is an alternative way to receive messages from the satellite. It avoid the need of an SDR, therefore it also avoids the need for GNU Radio.
+This is an alternative way to receive messages from the satellite. It avoids the need for an SDR, therefore it also avoids the need for GNU Radio.
 
-In order to use a TNC, there are a few changes that you need to do. The file "config_tnc_example" contains and example for a typicall TNC. Make sure that you change the serial port and baud rate to the correct values.
+To use a TNC, there are a few changes that you need to make. The file "config_tnc_example" contains the example for a typical TNC. Make sure that you change the serial port and baud rate to the correct values.
 
 If you are using docker and want to use it with a TNC, to minimize dependencies, you will need to run the tnc_proxy.py script locally. With the following commands:
 
@@ -83,7 +83,7 @@ Please make sure that you also comment out the GNU Radio service in the docker c
 
 The virtual machine already contains all the files and dependencies needed to run the TNC. Just make sure you update the config file correctly and if you are using a real TNC make sure that you pass the USB device to the virtual machine.
 
-After this everything should run smoothly.
+After this, everything should run smoothly.
 
 ps: when the tnc_proxy.py script starts, you should see the lights on the tnc blink three times
 
@@ -95,7 +95,7 @@ This allows a couple of different scenarios:
 - use the audio output from a radio connected to your computer to try and decode the messages
 - use GQRX + SDR as an alternative way to receive the messages
 
-When the Virtual Machine boots, it will automatically create an audio sink called DireWolfSink. This sink will be the default source for the Direwolf software. To run the software, you just need to choose the correct serial port in the config file (/tmp/kisstnc). The launch script will then auotmatically start the Direwolf, pipe DirewolfSink to Direwolf and launch the decoding software.
+When the Virtual Machine boots, it will automatically create an audio sink called DireWolfSink. This sink will be the default source for the Direwolf software. To run the software, you just need to choose the correct serial port in the config file (/tmp/kisstnc). The launch script will then automatically start the Direwolf, pipe DirewolfSink to Direwolf, and launch the decoding software.
 
 ### Audio playback
 1. Add the audio file to your virtual machine. 
@@ -103,12 +103,12 @@ When the Virtual Machine boots, it will automatically create an audio sink calle
 3. Using a tool like pavucontrol, change the output of the audio player to DireWolfSink
 4. Run the ./launch.sh script
 
-A known  good audio file is included in the repository, you can use it to test the setup.
+A known good audio file is included in the repository, you can use it to test the setup.
 
 ### GQRX + SDR
 1. Open GQRX and Connect to your SDR
 2. Set the correct frequency and mode (Narrow FM)
-3. Using a tool like pavucontrol change the output of GQRX to DireWolfSink
+3. Using a tool like pavucontrol, change the output of GQRX to DireWolfSink
 4. Run the ./launch.sh script
 
 ### Custom audio source
@@ -119,9 +119,9 @@ To check the available audio sources you can use the following command:
 pactl list sources short 
 ```
 
-After you have identified the correct source, you can change the default source. For this you will need to open scripts/tnc_wrapper.py and change the source name (the default name is DireWolfSink.monitor) there are some comments in the script to help guide you
+After you have identified the correct source, you can change the default source. For this you will need to open scripts/tnc_wrapper.py and change the source name (the default name is DireWolfSink.monitor) there are some comments in the script to help guide you.
 
-With the selected flags, every 5 seconds Direwolf will print to terminal some informaiton about the audio received (audio level and sample rate). This can be useful to check that Direwolf is actually receiveing the audio. However by default this it piped do /dev/null, so if you are having problems and want to check that everything is okay, you can remove the redirection to /dev/null in the launch.sh script. You might also want to comment out the launch of the decoder and viewing page to make sure nothing is cluttering the terminal.
+With the selected flags, every 5 seconds Direwolf will print to the terminal some information about the audio received (audio level and sample rate). This can be useful to check that Direwolf is receiving the audio. However, by default this is piped to /dev/null, so if you are having problems and want to check that everything is okay, you can remove the redirection to /dev/null in the launch.sh script. You might also want to comment out the launch of the decoder and viewing page to make sure nothing is cluttering the terminal.
 
 ## Operational parameters
 
