@@ -1,6 +1,5 @@
 # Define the config file
 CONFIG_FILE="config"
-CONFIG_FILE="config_tnc_example"
 
 
 # Function to read parameters from the config file
